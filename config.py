@@ -21,6 +21,9 @@ VERSION = "Mark 4"
 # Wie lange (Sekunden) auf eine Antwort des Sprachmodells gewartet wird
 OPENAI_TIMEOUT = float(os.getenv("JARVIS_OPENAI_TIMEOUT", "60"))
 
+# Zeit-Log der KI-Aufrufe (ai_log.py): JARVIS_TIMING=1 in der .env schaltet es ein
+TIMING_ENABLED = os.getenv("JARVIS_TIMING", "").strip().lower() in ("1", "true", "yes", "on")
+
 # Cloud-Datenbank (Neon / PostgreSQL)
 DATABASE_URL = os.getenv("DATABASE_URL")
 

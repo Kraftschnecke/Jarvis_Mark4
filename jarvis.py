@@ -1,7 +1,8 @@
 import traceback
 
 from openai import OpenAI
-from config import OPENAI_TIMEOUT
+import ai_log
+from config import OPENAI_TIMEOUT, TIMING_ENABLED
 from memory import Memory
 from settings_manager import SettingsManager
 from task_registry import TaskRegistry
@@ -49,6 +50,11 @@ def build_confirmation_question(section, content):
 class Jarvis:
     def __init__(self):
         self.client = OpenAI(timeout=OPENAI_TIMEOUT)
+
+        # Nur wenn JARVIS_TIMING=1: jeder KI-Aufruf wird gemessen (ai_log.py)
+        if TIMING_ENABLED:
+            self.client = ai_log.wrap(self.client)
+
         self.workspace = Workspace()
         self.pending_project_confirmation = None
         self.settings_manager = SettingsManager()
@@ -334,6 +340,8 @@ class Jarvis:
         "THINKING..." haengen bleiben, weil der Worker nie fertig meldet.
         Strg+C (KeyboardInterrupt) wird bewusst nicht abgefangen.
         """
+        ai_log.start_message(message)
+
         try:
             return self._process_message(message)
         except Exception as error:
@@ -350,6 +358,8 @@ class Jarvis:
                     "Bitte versuche es noch einmal."
                 )
             }
+        finally:
+            ai_log.finish_message()
 
     def _process_message(self, message):
 
