@@ -136,6 +136,14 @@ async function sendMessage(text) {
 
   try {
     const data = await api("POST", "/api/message", { message: text });
+
+    // Ein Chat-Befehl hat die Konversation gewechselt oder geleert:
+    // neuen Verlauf zeigen, danach Befehl und Antwort
+    if (data.messages) {
+      showHistory(data.messages);
+      addMessage("user", text);
+    }
+
     addMessage("jarvis", data.content);
 
     if (data.status === "exit") {

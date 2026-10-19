@@ -334,5 +334,70 @@ assert post_to("/api/settings", {"category": "memory", "key": "enabled", "value"
 assert fake.memory_enabled() is True
 assert request("GET", "/api/settings", host="evil.example")[0] == 403
 
+# 9) Chat-Befehle aendern die offene Konversation: der Browser bekommt den Verlauf
+chat_pid = fdb.add_project("Chatprojekt")
+chat_cid = fdb.add_conversation(chat_pid, "Eins", [
+    {"role": "user", "content": "alte Frage"},
+    {"role": "assistant", "content": "alte Antwort"},
+])
+ws = fake.workspace
+
+
+def fake_process(message):
+    if message == "open":
+        text = ws.open_project("Chatprojekt")
+    elif message == "reset":
+        text = ws.reset_conversation()
+    elif message == "close":
+        text = ws.close_project()
+    elif message == "normal":
+        ws.conversation.add_message("user", "normal")
+        ws.conversation.add_message("assistant", "Antwort")
+        text = "Antwort"
+    else:
+        text = "nichts passiert"
+    return {"status": "response", "content": text}
+
+
+fake.process_message = fake_process
+
+
+def chat(message):
+    status, _, data = post({"message": message})
+    assert status == 200, message
+    return json.loads(data)
+
+
+# Projekt per Befehl oeffnen: der gespeicherte Verlauf kommt mit
+data = chat("open")
+assert data["messages"] == [
+    {"role": "user", "content": "alte Frage"},
+    {"role": "assistant", "content": "alte Antwort"},
+], data
+assert fake.get_active()["project_id"] == chat_pid
+
+# Normale Nachricht und "nichts passiert": kein Verlauf in der Antwort
+assert "messages" not in chat("normal")
+assert "messages" not in chat("egal")
+
+# Konversation per Befehl leeren: leerer Verlauf kommt mit
+data = chat("reset")
+assert data["messages"] == [], data
+
+# Nochmal oeffnen laedt den Verlauf neu (aus der Datenbank), auch wenn dieselbe
+# Konversation schon offen ist
+assert chat("open")["messages"] == []  # Reset hat auch die Datenbank geleert
+fdb.messages[chat_cid] = [{"role": "user", "content": "neu"}]
+assert chat("open")["messages"] == [{"role": "user", "content": "neu"}]
+
+# Projekt schliessen: Chat soll leer werden
+data = chat("close")
+assert data["messages"] == [] and fake.get_active()["project_id"] is None, data
+
+# Eine leere Konversation zu leeren veraendert nichts -> kein Verlauf
+assert "messages" not in chat("reset")
+
+fake.process_message = helper.process_message
+
 httpd.shutdown()
 print("ALL TESTS PASSED")

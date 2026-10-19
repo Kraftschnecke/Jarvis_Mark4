@@ -7,7 +7,8 @@ Dinge:
   2. Er stellt eine kleine JSON-Schnittstelle bereit, ueber die die Seite mit
      Jarvis spricht:
 
-       POST /api/message     {"message": "..."}  ->  {"status": ..., "content": ...}
+       POST /api/message     {"message": "..."}  ->  {"status": ..., "content": ..., "messages": [...]}
+                             ("messages" nur, wenn ein Chat-Befehl die offene Konversation geaendert hat)
        GET  /api/background?after=<id>  ->  {"messages": [{"id": 3, "text": "..."}], "last": 3}
                              (ohne "after": nur den aktuellen Stand "last" melden)
        GET  /api/projects    ->  {"projects": [...], "active": {...}}
@@ -114,14 +115,45 @@ def sidebar_state(jarvis, **extra):
     return state
 
 
+def conversation_changed(jarvis, before):
+    """Hat sich die offene Konversation durch eine Nachricht veraendert?
+
+    Eine normale Nachricht haengt nur etwas an dieselbe Liste an. Anders ist
+    es, wenn eine andere Konversation aktiv wurde, die Liste ersetzt wurde
+    (Konversation neu geladen) oder kleiner geworden ist (Reset).
+    """
+    active, messages, count = before
+    conversation = jarvis.conversation
+
+    return (
+        jarvis.get_active() != active
+        or conversation.messages is not messages
+        or len(conversation.messages) < count
+    )
+
+
 def api_post(jarvis, path, data):
     """Fuehrt eine POST-Aktion aus. Gibt das Antwort-Dict zurueck."""
     if path == "/api/message":
+        conversation = jarvis.conversation
+        before = (jarvis.get_active(), conversation.messages, len(conversation.messages))
+
         response = jarvis.process_message(get_text(data, "message"))
-        return {
+
+        result = {
             "status": response["status"],
             "content": response["content"]
         }
+
+        # Chat-Befehle ("Oeffne Projekt X", "Reset", ...) koennen die offene
+        # Konversation wechseln oder leeren. Dann bekommt der Browser den neuen
+        # Verlauf mit, sonst zeigt das Chatfenster noch den alten.
+        if conversation_changed(jarvis, before):
+            result["messages"] = [
+                dict(message) for message in jarvis.conversation.messages
+            ]
+
+        return result
 
     if path == "/api/settings":
         category = get_text(data, "category")
