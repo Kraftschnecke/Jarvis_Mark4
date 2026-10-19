@@ -12,7 +12,7 @@ So funktioniert es:
   responses.create() misst die Zeit, ruft den echten Client auf und merkt sich
   das Ergebnis. Die Aufrufstellen im restlichen Code bleiben unveraendert.
 - Der Name eines Aufrufs ist die Funktion, die ihn gemacht hat, z.B.
-  "command.detect_command".
+  "router.route_message".
 - start_message() / finish_message() klammern eine Nachricht (siehe
   Jarvis.process_message). finish_message() gibt die Zusammenfassung aus.
 """

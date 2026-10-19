@@ -44,6 +44,7 @@ import io
 import contextlib
 
 import jarvis as jarvis_module
+from router import chat_route
 from jarvis import Jarvis
 from workspace import Workspace
 from conversation import Conversation
@@ -67,20 +68,23 @@ def make_jarvis():
     j.memory = types.SimpleNamespace(process=lambda *a: None, get_context=lambda: "")
     j.process_project_context = lambda message: None
 
-    def detect(client, message):
+    def detect(client, message, task_registry=None):
         if state["detect"] is not None:
             raise state["detect"]
-        return {"intent": "EXIT" if message == "exit" else "NORMAL_MESSAGE"}
+        route = chat_route()
+        if message == "exit":
+            route["kind"] = "COMMAND"
+            route["command"]["intent"] = "EXIT"
+        return route
 
     def ask(client, conversation, memory, project_context=None):
         if state["ask"] is not None:
             raise state["ask"]
         return "alles gut"
 
-    jarvis_module.detect_command = detect
+    jarvis_module.route_message = detect
     jarvis_module.ask_jarvis = ask
     jarvis_module.save_message = lambda *a, **k: None
-    jarvis_module.recognize_task = lambda *a, **k: {"task_type": None}
     return j
 
 

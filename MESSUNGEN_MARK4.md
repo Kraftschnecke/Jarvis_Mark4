@@ -66,6 +66,61 @@ Zehn Nachrichten nacheinander, ein Projekt mit einer Konversation offen.
 
 ---
 
-## Messung 2: nach Step 2.3
+## Messung 2: nach Step 2.3 (Router, erste Fassung)
+
+Datum: 2026-10-20, gleiche Bedingungen. Unterschiede zu Messung 1: Nachricht 7 lautete
+nur "Wir entscheiden uns für Python" (kürzer), und das `ja` zur Rückfrage wurde wieder
+nicht geschickt.
+
+| # | Nachricht | Aufrufe (vorher → jetzt) | Gesamt (vorher → jetzt) | davon KI (jetzt) |
+|---|-----------|-------------------------:|------------------------:|-----------------:|
+| 1 | Hallo, wie geht's? | 4 → 3 | 6.25 → 4.70 s | 4.70 s |
+| 2 | Wie spät ist es? | 3 → 2 | 3.29 → 3.45 s | 3.45 s |
+| 3 | Was ist 15 mal 23? | 3 → 2 | 5.71 → 3.48 s | 3.48 s |
+| 4 | Ich trinke gerne Kaffee. | 4 → 3 | 6.47 → 4.72 s | 4.40 s |
+| 5 | Öffne Projekt Webtest2 | 1 → 1 | 3.56 → 2.15 s | 1.58 s |
+| 6 | Öffne Konversation Erste | 1 → 1 | 1.92 → 2.14 s | 1.57 s |
+| 7 | Wir entscheiden uns für Python (Projekt offen) | 5 → 4 | 10.91 → 7.26 s | 6.59 s |
+| 8 | Suche im Web nach dem Wetter in Växjö. | 3 → 2 | 6.03 → 6.35 s | 5.33 s |
+| 9 | Erkläre mir kurz, wie ein Timer funktioniert. (Projekt offen) | 5 → 4 | 7.68 → 6.38 s | 5.72 s |
+| 10 | Stelle einen Timer auf 10 Sekunden. | 3 → 2 | 3.71 → 2.51 s | 2.51 s |
+| | **Summe** | **32 → 24** | **55.53 → 43.14 s (−22 %)** | **39.33 s** |
+
+KI-Zeit gesamt: 49.91 → 39.33 s (−21 %). Eingabe-Tokens des Routers: ca. 927 statt
+523 + 796 = 1319 bei den beiden alten Aufrufen (−30 %).
+
+### Router im Vergleich zu den alten Aufrufen
+
+| | alt | Router |
+|---|---:|---:|
+| Chat / Aufgabe (zwei Aufrufe zusammen) | ca. 2.77 s (1.61 + 1.16) | ca. 2.01 s im Durchschnitt (1.48 bis 2.83 s) |
+| Befehl (ein Aufruf) | 1.36 bis 1.61 s | 1.57 bis 1.58 s |
+
+Prüfung der Erkennung (`router_check.py`, 32 Beispielsätze, echtes Modell): alt 32 von 32,
+Router 32 von 32, inklusive Grenzfälle und Injection-Satz.
+
+### Was die Zahlen zeigen
+
+1. **Der Router spart pro Chat- oder Aufgaben-Nachricht ca. 0.8 s** und eine Eingabe von ca. 400 Tokens.
+   Befehle sind nicht langsamer geworden (in `router_check.py` wirkte es so, im Betrieb nicht).
+2. **Die Antwort des Routers ist zu lang:** 67 bis 220 Ausgabe-Tokens, die alten
+   Prüf-Aufrufe brauchten 10 bis 40. Der Router schreibt immer alle sieben Felder mit
+   vielen `null`. Das kostet Zeit (Nachrichten 2 und 8: 2.3 und 2.8 s für den Router).
+   → Kleine Verbesserung 2.3b: nur zutreffende Felder ausgeben.
+3. **Die Zielwerte aus Messung 1 sind teilweise erreicht:** Befehle und Aufgaben brauchen
+   1 bis 2 Aufrufe (Ziel erreicht). Eine Chat-Nachricht braucht noch 3 (ohne Projekt)
+   bzw. 4 (mit Projekt) hintereinander laufende Aufrufe statt höchstens 2 und liegt bei
+   4.7 bis 7.3 s statt unter 4 s. Der Rest ist Memory- und Projekt-Prüfung: Step 2.4.
+4. **Außerhalb der KI** lagen die Nachrichten diesmal bei 3.81 s (vorher 5.62 s).
+   "Öffne Projekt" brauchte nur noch 0.57 s statt 1.95 s. Das schwankt also stark
+   (vielleicht war die Datenbank vorher "kalt"). Die Messung muss vor Step 2.5
+   (Verbindungspool) wiederholt werden, bevor man daraus Schlüsse zieht.
+5. Die Websuche (Nachricht 8) ist wegen der Router-Antwort mit 220 Tokens und der
+   langen Antwort aus den Suchergebnissen (2261 Eingabe-Tokens) weiter die langsamste
+   Aufgabe.
+
+---
+
+## Messung 3: nach Step 2.3b (kürzere Router-Antwort)
 
 _noch nicht gemessen_

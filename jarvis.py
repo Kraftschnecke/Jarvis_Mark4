@@ -6,7 +6,6 @@ from config import OPENAI_TIMEOUT, TIMING_ENABLED
 from memory import Memory
 from settings_manager import SettingsManager
 from task_registry import TaskRegistry
-from task_recognizer import recognize_task, is_known_task
 from task_executor import execute_registered_task
 from brain import respond_to_task, ask_jarvis
 from project_context import (
@@ -14,7 +13,7 @@ from project_context import (
     add_to_project_section
 )
 from project_analyzer import process_project_context
-from command import detect_command
+from router import route_message
 from background_tasks import get_results
 from workspace import Workspace
 from tasks import (
@@ -373,38 +372,37 @@ class Jarvis:
                 "content": confirmation_result
             }
 
-        command = detect_command(
-            self.client,
-            message
-        )
-
-        if command["intent"] == "EXIT":
-            return {
-                "status": "exit",
-                "content": "Shutting down, Sir"
-            }
-
-        command_result = self.handle_command(
-            command
-        )
-
-        if command_result is not None:
-            return {
-                "status": "response",
-                "content": command_result
-            }
-
-        recognized_task = recognize_task(
+        # Ein einziger KI-Aufruf entscheidet: Befehl, Aufgabe oder Chat
+        route = route_message(
             self.client,
             message,
             self.task_registry
         )
 
-        if is_known_task(recognized_task):
+        if route["kind"] == "COMMAND":
+            command = route["command"]
+
+            if command["intent"] == "EXIT":
+                return {
+                    "status": "exit",
+                    "content": "Shutting down, Sir"
+                }
+
+            command_result = self.handle_command(
+                command
+            )
+
+            if command_result is not None:
+                return {
+                    "status": "response",
+                    "content": command_result
+                }
+
+        if route["kind"] == "TASK":
             task = execute_registered_task(
                 self.task_registry,
-                recognized_task["task_type"],
-                recognized_task.get("parameters")
+                route["task_type"],
+                route["parameters"]
             )
 
             return {

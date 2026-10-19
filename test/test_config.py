@@ -57,8 +57,7 @@ class FakeClient:
         return types.SimpleNamespace(output_text=self.text)
 
 
-from command import detect_command
-from task_recognizer import recognize_task
+from router import route_message
 from project_analyzer import analyze_project_message
 from memory import Memory
 from brain import ask_jarvis, respond_to_task
@@ -66,8 +65,7 @@ from conversation import Conversation
 from task import Task
 from task_registry import TaskRegistry
 
-detect_command(FakeClient("{}"), "x")
-recognize_task(FakeClient("{}"), "x", TaskRegistry())
+route_message(FakeClient("{}"), "x", TaskRegistry())
 analyze_project_message(FakeClient("{}"), "x")
 Memory.analyze(object.__new__(Memory), FakeClient("{}"), "x")
 ask_jarvis(FakeClient("ok"), Conversation(), "mem")
@@ -75,6 +73,6 @@ task = Task("GET_TIME", "Zeit")
 task.result = []
 respond_to_task(FakeClient("ok"), "x", task)
 
-assert used_models == ["test-modell"] * 6, used_models
+assert used_models == ["test-modell"] * 5, used_models
 
 print("ALL TESTS PASSED")

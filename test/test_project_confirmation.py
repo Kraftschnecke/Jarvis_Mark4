@@ -44,6 +44,7 @@ for name in (
 sys.modules["project"] = project_stub
 
 import jarvis as jarvis_module
+from router import chat_route
 from jarvis import Jarvis
 from workspace import Workspace
 from conversation import Conversation
@@ -83,10 +84,9 @@ def make_jarvis(analysis=CONFIRMATION, project_id=7):
     )
     jarvis_module.get_project_context = lambda project_id: ""
     jarvis_module.save_message = lambda *a, **k: None
-    jarvis_module.detect_command = lambda client, message: (
-        llm_calls.append("detect_command") or {"intent": "NORMAL_MESSAGE"}
+    jarvis_module.route_message = lambda *a, **k: (
+        llm_calls.append("route_message") or chat_route()
     )
-    jarvis_module.recognize_task = lambda *a, **k: {"task_type": None}
 
     def fake_add(project_id, section, content):
         saved.append((project_id, section, content))

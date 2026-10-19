@@ -16,8 +16,6 @@ import database
 database.DATABASE_URL = None
 
 from llm_json import parse_llm_json
-from command import detect_command
-from task_recognizer import recognize_task
 from memory import Memory
 from project_analyzer import analyze_project_message
 
@@ -40,19 +38,6 @@ cases = [
 ]
 for text, exp in cases:
     assert parse_llm_json(text, D) == exp, (text, parse_llm_json(text, D))
-
-# command
-assert detect_command(Fake("blabla"), "x")["intent"] == "NORMAL_MESSAGE"
-assert detect_command(Fake('{"intent":"HACK"}'), "x")["intent"] == "NORMAL_MESSAGE"
-assert detect_command(Fake('```json\n{"intent":"EXIT"}\n```'), "x")["intent"] == "EXIT"
-c = detect_command(Fake('{"intent":"OPEN_PROJECT","project_name":"Jarvis"}'), "x")
-assert c["project_name"] == "Jarvis" and c["conversation_name"] is None
-
-# task recognizer
-assert recognize_task(Fake("müll"), "x", Reg()) == {"task_type": None}
-assert recognize_task(Fake('{"task_type":"GET_TIME"}'), "x", Reg())["task_type"] == "GET_TIME"
-assert recognize_task(Fake('{"task_type":"ERFUNDEN"}'), "x", Reg()) == {"task_type": None}
-assert recognize_task(Fake('{}'), "x", Reg()) == {"task_type": None}
 
 # memory
 # ohne __init__, damit der Test keine Datenbankverbindung aufbaut

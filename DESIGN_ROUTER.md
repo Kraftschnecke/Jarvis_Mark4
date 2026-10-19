@@ -92,7 +92,7 @@ Die Antwort des Modells ist unvertraute Eingabe. `router.py` prüft sie:
 |-------|----------|
 | `router.py` | neu: `route_message` + Prüfregeln |
 | `jarvis.py` | `_process_message` ruft `route_message` statt `detect_command` + `recognize_task` |
-| `command.py` | nur noch `VALID_INTENTS` (der Prompt zieht nach `router.py`) |
+| `command.py` | wird gelöscht (Befehlsliste und Prompt ziehen nach `router.py`; `VALID_INTENTS` heißt dort `COMMAND_INTENTS`, ohne `NORMAL_MESSAGE`) |
 | `task_recognizer.py` | wird gelöscht (der Prompt zieht nach `router.py`) |
 | Tests | `test_llm_json.py`, `test_config.py` und die Tests, die `detect_command` / `recognize_task` ersetzen, werden auf den Router umgestellt; neue `test/test_router.py` |
 

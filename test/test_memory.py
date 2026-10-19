@@ -43,6 +43,7 @@ sys.modules["project"] = project_stub
 import memory as memory_module
 from memory import Memory
 import jarvis as jarvis_module
+from router import chat_route
 from jarvis import Jarvis
 from workspace import Workspace
 from conversation import Conversation
@@ -163,8 +164,7 @@ def make_jarvis(enabled):
 
     jarvis_module.ask_jarvis = fake_ask
     jarvis_module.save_message = lambda *a, **k: None
-    jarvis_module.detect_command = lambda c, m: {"intent": "NORMAL_MESSAGE"}
-    jarvis_module.recognize_task = lambda *a, **k: {"task_type": None}
+    jarvis_module.route_message = lambda *a, **k: chat_route()
     return j, calls
 
 
