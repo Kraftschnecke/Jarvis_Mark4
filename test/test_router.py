@@ -142,7 +142,6 @@ assert "- START_PROGRAM: Ein Programm auf dem Computer öffnen oder starten (par
 assert "previous_result" not in prompt and "open_program" not in prompt  # Action-Details bleiben draussen
 assert json.dumps(hostile, ensure_ascii=False) in prompt                  # eingebettet als Text
 assert prompt.rstrip().endswith(json.dumps(hostile, ensure_ascii=False))
-assert '"new_conversation_name": null' not in prompt and '"parameters": {}' not in prompt  # kurze Antwortform
 assert len(describe_tasks(registry).splitlines()) == len(list(registry.get_all()))
 
 # 5) Jarvis._process_message: genau ein Router-Aufruf, danach der passende Weg

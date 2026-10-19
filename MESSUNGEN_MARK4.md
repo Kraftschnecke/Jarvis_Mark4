@@ -106,7 +106,7 @@ Router 32 von 32, inklusive Grenzfälle und Injection-Satz.
 2. **Die Antwort des Routers ist zu lang:** 67 bis 220 Ausgabe-Tokens, die alten
    Prüf-Aufrufe brauchten 10 bis 40. Der Router schreibt immer alle sieben Felder mit
    vielen `null`. Das kostet Zeit (Nachrichten 2 und 8: 2.3 und 2.8 s für den Router).
-   → Kleine Verbesserung 2.3b: nur zutreffende Felder ausgeben.
+   → Versuch 2.3b (nur zutreffende Felder ausgeben), siehe unten: gescheitert.
 3. **Die Zielwerte aus Messung 1 sind teilweise erreicht:** Befehle und Aufgaben brauchen
    1 bis 2 Aufrufe (Ziel erreicht). Eine Chat-Nachricht braucht noch 3 (ohne Projekt)
    bzw. 4 (mit Projekt) hintereinander laufende Aufrufe statt höchstens 2 und liegt bei
@@ -121,6 +121,25 @@ Router 32 von 32, inklusive Grenzfälle und Injection-Satz.
 
 ---
 
-## Messung 3: nach Step 2.3b (kürzere Router-Antwort)
+## Versuch 2.3b: kürzere Router-Antwort (gescheitert, zurückgenommen)
+
+Idee: Der Router soll nur die zutreffenden Felder ausgeben (`{"kind": "CHAT"}` statt
+sieben Feldern mit `null`), um Ausgabe-Tokens und Zeit zu sparen.
+
+Ergebnis von `router_check.py` mit dem geänderten Prompt: **15 von 32 richtig**
+(vorher 32 von 32). Das Modell wählte fast immer `CHAT`, auch bei "Öffne Projekt Jarvis"
+und "Wie spät ist es?". Wahrscheinliche Ursache: "so kurz wie möglich" und das kürzeste
+Beispiel (`CHAT`) lenken das Modell zur kürzesten Antwort. Zeit pro Satz: 1.93 s, also
+kein Gewinn.
+
+Entscheidung: Prompt wieder auf die 32/32-Fassung zurückgesetzt. Die Kürzung der Antwort
+wird nicht weiterverfolgt, bevor die größeren Hebel (Step 2.4) umgesetzt sind. Wenn
+später ein neuer Versuch gemacht wird, dann nur mit `router_check.py` als Abnahme.
+
+Das Skript hat seinen Zweck erfüllt: Tests mit Fakes hätten diesen Fehler nicht gefunden.
+
+---
+
+## Messung 3: nach Step 2.4
 
 _noch nicht gemessen_
