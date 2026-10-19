@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>J.A.R.V.I.S.</title>
+  <script>
+    // Gespeichertes Design sofort setzen, damit die Seite nicht aufblitzt
+    try {
+      const t = localStorage.getItem("jarvis.theme");
+      const light = t === "Light" || (t === "System" && matchMedia("(prefers-color-scheme: light)").matches);
+      if (light) document.documentElement.dataset.theme = "light";
+      const f = parseInt(localStorage.getItem("jarvis.fontsize"), 10);
+      if (f >= 11 && f <= 20) document.documentElement.style.fontSize = f + "px";
+    } catch (e) { /* ohne Speicher gilt das Standard-Design */ }
+  </script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="layout" id="layout">
+
+    <aside class="sidebar" id="sidebar">
+      <h2 class="sidebar-title">Conversations</h2>
+
+      <button class="side-button" id="new-conversation" type="button">
+        <span class="plus">＋</span> New Conversation
+      </button>
+      <button class="side-button" id="new-project" type="button">
+        <span class="plus">＋</span> New Project
+      </button>
+
+      <nav class="tree" id="tree" aria-label="Projekte und Konversationen"></nav>
+
+      <button class="side-button settings-button" id="open-settings" type="button">
+        <span class="plus">⚙</span> Settings
+      </button>
+    </aside>
+
+    <main class="app">
+      <header class="topbar">
+        <button class="menu-button" id="menu-button" type="button" aria-label="Seitenleiste">☰</button>
+        <span class="logo">J.A.R.V.I.S.</span>
+        <span class="status" id="status" data-state="ready">● READY</span>
+      </header>
+
+      <section class="chat" id="chat" aria-live="polite"></section>
+
+      <form class="composer" id="composer" autocomplete="off">
+        <textarea id="input" rows="1" placeholder="Schreibe an J.A.R.V.I.S. ..." autofocus></textarea>
+        <button type="submit" id="send">Senden</button>
+      </form>
+    </main>
+  </div>
+
+  <!-- Kontextmenue (wird von app.js befuellt) -->
+  <div class="menu" id="menu" hidden></div>
+
+  <!-- Eingabe- und Bestaetigungsdialog -->
+  <dialog id="dialog">
+    <form method="dialog" id="dialog-form">
+      <h3 id="dialog-title"></h3>
+      <p id="dialog-text"></p>
+      <input type="text" id="dialog-input" maxlength="100">
+      <p class="dialog-error" id="dialog-error" hidden></p>
+      <div class="dialog-buttons">
+        <button type="button" class="secondary" id="dialog-cancel">Abbrechen</button>
+        <button type="submit" id="dialog-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Einstellungen -->
+  <dialog id="settings" class="settings">
+    <div class="settings-shell">
+      <nav class="settings-nav" id="settings-nav" aria-label="Kategorien"></nav>
+      <section class="settings-page">
+        <header class="settings-head">
+          <div>
+            <h3 id="settings-title"></h3>
+            <p id="settings-desc"></p>
+          </div>
+          <button type="button" class="secondary" id="settings-close">Schließen</button>
+        </header>
+        <p class="dialog-error" id="settings-error" hidden></p>
+        <div class="settings-rows" id="settings-rows"></div>
+      </section>
+    </div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
