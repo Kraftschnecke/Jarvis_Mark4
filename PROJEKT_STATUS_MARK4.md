@@ -53,7 +53,7 @@ behavior, computer control, perception, hardware.
 ## Phase 0 -- Fresh Start
 
 ### Step 0.1
-- [ ] New folder `Jarvis_Mark4`, new Git repository, new GitHub repository, first commit "Mark 3 baseline".
+- [X] New folder `Jarvis_Mark4`, new Git repository, new GitHub repository, first commit "Mark 3 baseline".
   - Done when: `git status` is clean, `.env`, `settings.json`, `programs.json` and `projects/` do not appear in Git, `py run_tests.py` is 13 of 13.
 
 ### Step 0.2
@@ -61,7 +61,7 @@ behavior, computer control, perception, hardware.
   - Done when: the settings dialog "About" shows "Mark 4".
 
 ### Step 0.3
-- [ ] Back up the Neon database before any schema change (Neon branch or export).
+- [X] Back up the Neon database before any schema change (Neon branch or export).
   - Done when: a restore point exists and is noted here (name/date).
 
 ---
