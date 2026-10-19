@@ -2,6 +2,7 @@ import traceback
 
 from openai import OpenAI
 import ai_log
+from parallel import Job
 from config import OPENAI_TIMEOUT, TIMING_ENABLED
 from memory import Memory
 from settings_manager import SettingsManager
@@ -170,19 +171,75 @@ class Jarvis:
         self.workspace.delete_conversation_by_id(project_id, conversation_id)
 
     def process_normal_message(self, message):
+        # Momentaufnahme VOR den Hintergrund-Jobs: Die Antwort bekommt Memory und
+        # Projekt-Kontext im Zustand vor dieser Nachricht (siehe DESIGN_PARALLEL.md).
+        memory_context = self.get_memory_context()
+        active_project = self.project_state.active_project
+
+        project_context = (
+            get_project_context(active_project[0])
+            if active_project is not None
+            else None
+        )
+
+        # Memory- und Projekt-Pruefung laufen gleichzeitig mit der Antwort.
+        memory_job = None
+        project_job = None
 
         if self.memory_enabled():
-            try:
-                self.memory.process(
-                    self.client,
+            memory_job = Job(self.memory.process, self.client, message)
+
+        if active_project is not None:
+            project_job = Job(self.process_project_context, message)
+
+        try:
+            self.conversation.add_message("user", message)
+
+            if self.project_state.active_conversation is not None:
+                save_message(
+                    self.project_state.active_conversation[0],
+                    "user",
                     message
                 )
+
+            answer = ask_jarvis(
+                self.client,
+                self.conversation,
+                memory_context,
+                project_context
+            )
+        finally:
+            # Nach einer Nachricht darf nichts mehr im Hintergrund schreiben,
+            # auch nicht, wenn die Antwort gescheitert ist.
+            for job in (memory_job, project_job):
+                if job is not None:
+                    job.wait()
+
+        self.conversation.add_message("assistant", answer)
+
+        if self.project_state.active_conversation is not None:
+            save_message(
+                self.project_state.active_conversation[0],
+                "assistant",
+                answer
+            )
+
+        if memory_job is not None:
+            try:
+                memory_job.result()
             except Exception as error:
                 # Memory ist Nebensache: ein Fehler dort darf die
                 # eigentliche Antwort nicht verhindern.
                 print(f"[memory] Konnte nichts speichern: {error}")
 
-        project_result = self.process_project_context(message)
+        project_result = None
+
+        if project_job is not None:
+            try:
+                project_result = project_job.result()
+            except Exception as error:
+                # Ebenso die Projekt-Pruefung: Antwort ohne Rueckfrage.
+                print(f"[projekt] Pruefung fehlgeschlagen: {error}")
 
         # Eine neue Nachricht macht jede alte offene Rueckfrage ungueltig.
         self.pending_project_confirmation = None
@@ -193,7 +250,7 @@ class Jarvis:
             and project_result.get("status") == "confirmation_required"
         ):
             self.pending_project_confirmation = {
-                "project_id": self.project_state.active_project[0],
+                "project_id": active_project[0],
                 "section": project_result["section"],
                 "content": project_result["content"]
             }
@@ -201,37 +258,6 @@ class Jarvis:
             confirmation_question = build_confirmation_question(
                 project_result["section"],
                 project_result["content"]
-            )
-
-        self.conversation.add_message("user", message)
-
-        if self.project_state.active_conversation is not None:
-            save_message(
-                self.project_state.active_conversation[0],
-                "user",
-                message
-            )
-
-        answer = ask_jarvis(
-            self.client,
-            self.conversation,
-            self.get_memory_context(),
-            (
-                get_project_context(
-                    self.project_state.active_project[0]
-                )
-                if self.project_state.active_project is not None
-                else None
-            )
-        )
-
-        self.conversation.add_message("assistant", answer)
-
-        if self.project_state.active_conversation is not None:
-            save_message(
-                self.project_state.active_conversation[0],
-                "assistant",
-                answer
             )
 
         # Die Rueckfrage gehoert nicht in den Chatverlauf, nur in die Anzeige.

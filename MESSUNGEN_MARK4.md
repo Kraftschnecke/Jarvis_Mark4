@@ -140,6 +140,10 @@ Das Skript hat seinen Zweck erfüllt: Tests mit Fakes hätten diesen Fehler nich
 
 ---
 
-## Messung 3: nach Step 2.4
+## Messung 3: nach Step 2.4 (Memory- und Projekt-Prüfung parallel)
+
+Gleiche zehn Nachrichten wie Messung 1, diesmal mit `ja` nach der Python-Entscheidung.
+Zielwerte: Chat ohne Projekt unter 3,5 s, Chat mit Projekt unter 4,5 s.
+Hinweis: Im Zeit-Log ist "KI-Zeit summiert" jetzt größer als "gesamt", weil Aufrufe gleichzeitig laufen.
 
 _noch nicht gemessen_

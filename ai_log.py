@@ -110,7 +110,7 @@ def format_summary(current, total_seconds):
 
     lines = [
         f'[TIMING] "{text}" -> {len(calls)} KI-Aufrufe, '
-        f'{total_seconds:.2f} s gesamt (davon KI {ai_seconds:.2f} s)'
+        f'{total_seconds:.2f} s gesamt (KI-Zeit summiert {ai_seconds:.2f} s)'
     ]
 
     for number, call in enumerate(calls, start=1):
