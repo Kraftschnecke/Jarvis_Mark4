@@ -2,8 +2,9 @@
 
 _Started: 2026-10-19. Baseline: Mark 3 (tag `mark3` in the old repository `Jarvis_Mark3`)._
 
-The complete description of the Mark 3 architecture, its decisions and its
-cleanup pass is in `PROJEKT_STATUS_MARK3.md` (kept as archive, not updated any more).
+The description of the Mark 3 architecture, its decisions and its cleanup pass
+is no longer part of this repository. It is kept in the old repository
+`Jarvis_Mark3` (tag `mark3`, file `PROJEKT_STATUS_MARK3.md`) and in the Claude project.
 Everything there still applies to Mark 4 unless this file says otherwise.
 
 ## Project Goal (long term)
