@@ -29,7 +29,7 @@ copy programs.example.json programs.json
 2. `programs.json` öffnen und nur Programme eintragen, die Jarvis starten darf.
    Alles, was dort nicht steht (außer ein paar eingebauten Windows-Programmen),
    startet Jarvis nicht.
-3. `settings.json` und der Ordner `projects/` entstehen beim ersten Start von selbst.
+3. `settings.json` entsteht beim ersten Start von selbst. Der Text eines Projekts (`project.md`) liegt in der Datenbank; ansehen mit `py show_project.py` (Liste) bzw. `py show_project.py <ID>`.
    Die Tabellen in der Datenbank (Erinnerungen, Projekte, Konversationen, Nachrichten)
    legt Jarvis ebenfalls selbst an, eine leere Neon-Datenbank reicht.
 

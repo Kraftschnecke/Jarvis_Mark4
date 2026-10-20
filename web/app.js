@@ -13,7 +13,11 @@ const sendButton = document.getElementById("send");
 const composer = document.getElementById("composer");
 const statusEl = document.getElementById("status");
 
-const GREETING = "Guten Tag, Sir. Wie kann ich helfen?";
+// Begruessung mit der eingestellten Anrede (Settings > J.A.R.V.I.S.)
+function greeting() {
+  const address = (settings.jarvis && settings.jarvis.address) || "Sir";
+  return "Guten Tag, " + address + ". Wie kann ich helfen?";
+}
 
 let busy = false;
 let ended = false;
@@ -120,7 +124,7 @@ function showHistory(messages) {
   chat.replaceChildren();
 
   if (messages.length === 0) {
-    addMessage("jarvis", GREETING);
+    addMessage("jarvis", greeting());
     return;
   }
 
@@ -609,43 +613,24 @@ const settingsError = document.getElementById("settings-error");
 
 let settings = {};
 let about = { version: "", system: "" };
-let currentPage = "General";
+let currentPage = "Appearance";
 
 // live: true = wirkt wirklich und ist aenderbar. Alles andere ist (wie in der
 // bisherigen Oberflaeche) sichtbar, aber ausgegraut, bis es funktioniert.
 const PAGES = [
   {
-    key: "General", icon: "⚙", desc: "Basic application behavior and startup settings.",
-    rows: [
-      { label: "Language", category: "general", key: "language", type: "select", options: ["English", "Deutsch", "Svenska"] },
-      { label: "Startup behavior", category: "general", key: "startup_behavior", type: "select", options: ["Normal startup"] },
-      { label: "Confirmations", category: "general", key: "confirmations", type: "toggle" },
-    ],
-  },
-  {
     key: "Appearance", icon: "🎨", desc: "Visual settings for the J.A.R.V.I.S. interface.",
     rows: [
       { label: "Theme", category: "appearance", key: "theme", type: "select", options: ["Dark", "Light", "System"], live: true },
-      { label: "Accent color", category: "appearance", key: "accent_color", type: "select", options: ["J.A.R.V.I.S. Blue", "Custom"] },
+      { label: "Accent color", category: "appearance", key: "accent_color", type: "select", options: ["J.A.R.V.I.S. Blue", "British Racing Green"], live: true },
       { label: "Font size", category: "appearance", key: "font_size", type: "number", min: 11, max: 20, suffix: " px", live: true },
-      { label: "UI scale", category: "appearance", key: "ui_scale", type: "select", options: ["80 %", "100 %", "125 %", "150 %"] },
     ],
   },
   {
-    key: "J.A.R.V.I.S.", icon: "🤖", desc: "Identity, addressing and assistant behavior.",
+    key: "J.A.R.V.I.S.", icon: "🤖", desc: "How J.A.R.V.I.S. addresses you.",
     rows: [
-      { label: "Name", category: "jarvis", key: "name", type: "text" },
-      { label: "Address", category: "jarvis", key: "address", type: "text" },
-      { label: "Personality / behavior", category: "jarvis", key: "personality", type: "select", options: ["Default", "Professional", "Casual", "Technical"] },
-    ],
-  },
-  {
-    key: "Voice", icon: "🔊", desc: "Input, output and speech settings.",
-    rows: [
-      { label: "Input", category: "voice", key: "input_device", type: "select", options: ["Default input"] },
-      { label: "Output", category: "voice", key: "output_device", type: "select", options: ["Default output"] },
-      { label: "Voice", category: "voice", key: "voice", type: "select", options: ["Default voice"] },
-      { label: "Speed", category: "voice", key: "speed", type: "number", min: 50, max: 200, suffix: " %" },
+      { label: "Address", category: "jarvis", key: "address", type: "text", live: true, maxLength: 30,
+        note: "Gilt für Antworten und feste Meldungen, z. B. „Sir“. Ein Wort oder Name, höchstens 30 Zeichen." },
     ],
   },
   {
@@ -653,8 +638,7 @@ const PAGES = [
     rows: [
       { label: "Memory enabled", category: "memory", key: "enabled", type: "toggle", live: true,
         note: "Aus: J.A.R.V.I.S. lernt nichts Neues und nutzt nichts Gespeichertes." },
-      { label: "Stored information", type: "readonly", text: "Managed by the J.A.R.V.I.S. memory system" },
-      { label: "Memory management", type: "readonly", text: "Clear memory" },
+      { type: "memory-list", live: true },
     ],
   },
   {
@@ -675,12 +659,17 @@ function applyAppearance() {
   if (light) document.documentElement.dataset.theme = "light";
   else delete document.documentElement.dataset.theme;
 
+  const green = settings.appearance && settings.appearance.accent_color === "British Racing Green";
+  if (green) document.documentElement.dataset.accent = "green";
+  else delete document.documentElement.dataset.accent;
+
   if (Number.isInteger(size) && size >= 11 && size <= 20) {
     document.documentElement.style.fontSize = size + "px";
   }
 
   try {
     localStorage.setItem("jarvis.theme", theme);
+    localStorage.setItem("jarvis.accent", green ? "green" : "blue");
     if (Number.isInteger(size)) localStorage.setItem("jarvis.fontsize", String(size));
   } catch (error) {
     /* ohne Speicher funktioniert die Seite trotzdem */
@@ -713,6 +702,7 @@ async function saveSetting(row, value) {
   } catch (error) {
     settingsError.textContent = error.message;
     settingsError.hidden = false;
+    renderSettings();   // zeigt wieder den gespeicherten Wert
   }
 
   renderSettings();
@@ -729,7 +719,8 @@ function buildControl(row) {
       el.value = el.textContent = option;
       control.appendChild(el);
     });
-    control.value = stored;
+    // Ein alter, nicht mehr gueltiger Wert (z.B. "Custom") zeigt die erste Option
+    control.value = row.options.includes(stored) ? stored : row.options[0];
     control.addEventListener("change", () => saveSetting(row, control.value));
   } else if (row.type === "number") {
     control = document.createElement("input");
@@ -747,7 +738,11 @@ function buildControl(row) {
   } else {
     control = document.createElement("input");
     control.type = "text";
-    control.readOnly = true;
+    control.readOnly = !(row.type === "text" && row.live);
+    if (row.maxLength) control.maxLength = row.maxLength;
+    if (row.type === "text" && row.live) {
+      control.addEventListener("change", () => saveSetting(row, control.value.trim()));
+    }
     control.value = row.type === "readonly"
       ? (typeof row.text === "function" ? row.text() : row.text)
       : (stored === undefined ? "" : stored);
@@ -763,6 +758,223 @@ function buildControl(row) {
 
   return control;
 }
+
+// Liste der gespeicherten Erinnerungen (Settings > Memory).
+// Alles wird mit textContent eingesetzt: Die Werte stammen aus Nachrichten und
+// duerfen nie als HTML gelten.
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function smallButton(label, className, onClick) {
+  const button = el("button", className, label);
+  button.type = "button";
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function buildMemoryList() {
+  const box = el("div", "memory-list");
+
+  function showError(message) {
+    box.replaceChildren(el("p", "memory-empty", message), smallButton("Aktualisieren", "secondary", load));
+  }
+
+  async function load() {
+    try {
+      render(await api("GET", "/api/memories"));
+    } catch (error) {
+      showError(error.message);
+    }
+  }
+
+  function render(data) {
+    box.replaceChildren();
+
+    const count = data.memories.length;
+    const head = el("div", "memory-head");
+    head.append(
+      el("span", "memory-summary", count === 1 ? "1 gespeicherte Information" : count + " gespeicherte Informationen"),
+      smallButton("Aktualisieren", "secondary", load)
+    );
+    box.appendChild(head);
+
+    if (!data.enabled) {
+      box.appendChild(el("p", "memory-empty", "Memory ist ausgeschaltet: Diese Einträge werden gerade nicht benutzt."));
+    }
+
+    if (count === 0) {
+      box.appendChild(el("p", "memory-empty", "Noch nichts gespeichert."));
+    }
+
+    data.memories.forEach((memory) => box.appendChild(buildMemoryItem(memory, data)));
+
+    box.appendChild(buildDangerZone(data));
+  }
+
+  function buildMemoryItem(memory, data) {
+    const item = el("div", "memory-item");
+
+    const top = el("div", "memory-top");
+    top.append(el("span", "memory-key", memory.key), el("span", "memory-type", memory.type));
+
+    const actions = el("div", "memory-actions");
+    actions.append(
+      smallButton("Bearbeiten", "secondary", () => startEdit(item, memory, data)),
+      smallButton("Löschen", "secondary danger-text", () => askDelete(memory))
+    );
+
+    item.append(top, el("div", "memory-value", memory.value), actions);
+    return item;
+  }
+
+  function startEdit(item, memory, data) {
+    const area = el("textarea", "memory-edit");
+    area.value = memory.value;
+    area.maxLength = data.max_value_length;
+    area.rows = 3;
+
+    const type = el("select", "memory-edit-type");
+    ["fact", "preference"].forEach((name) => {
+      const option = el("option", "", name);
+      option.value = name;
+      type.appendChild(option);
+    });
+    type.value = memory.type;
+
+    const error = el("p", "dialog-error");
+    error.hidden = true;
+
+    const save = smallButton("Speichern", "", async () => {
+      save.disabled = true;
+      error.hidden = true;
+      try {
+        render(await api("POST", "/api/memory/update", {
+          key: memory.key, value: area.value.trim(), type: type.value,
+        }));
+      } catch (problem) {
+        error.textContent = problem.message;
+        error.hidden = false;
+        save.disabled = false;
+      }
+    });
+
+    const actions = el("div", "memory-actions");
+    actions.append(type, smallButton("Abbrechen", "secondary", () => render(data)), save);
+
+    const top = el("div", "memory-top");
+    top.appendChild(el("span", "memory-key", memory.key));
+
+    item.replaceChildren(top, area, error, actions);
+    area.focus();
+  }
+
+  function askDelete(memory) {
+    openDialog({
+      title: "Erinnerung löschen?",
+      text: "„" + memory.key + "“ = „" + memory.value + "“ wird dauerhaft gelöscht. "
+        + "J.A.R.V.I.S. kennt diese Information danach nicht mehr.",
+      okLabel: "Löschen",
+      danger: true,
+      onSubmit: async () => {
+        render(await api("POST", "/api/memory/delete", { key: memory.key, confirm: true }));
+      },
+    });
+  }
+
+  function buildDangerZone(data) {
+    const zone = el("div", "danger-zone");
+    const text = el("div");
+    text.append(
+      el("span", "setting-label", "Alle Erinnerungen löschen"),
+      el("span", "setting-note", "Nicht rückgängig zu machen. Dafür gibt es mehrere Sicherungen.")
+    );
+    const button = smallButton("Alle löschen …", "secondary danger-text", () => askDeleteAll(data));
+    button.disabled = data.memories.length === 0;
+    zone.append(text, button);
+    return zone;
+  }
+
+  // Mehrere Huerden, mit Absicht: Haken setzen, den Satz selbst eintippen
+  // (Einfuegen ist gesperrt) und 5 Sekunden warten.
+  function askDeleteAll(data) {
+    const count = data.memories.length;
+    const phrase = data.delete_all_phrase;
+    const WAIT_MS = 5000;
+
+    dangerText.textContent = "Das löscht alle " + count + " gespeicherten Informationen dauerhaft. "
+      + "Es gibt keine Sicherung und kein Zurück. J.A.R.V.I.S. kennt dich danach nicht mehr.";
+    dangerPhrase.textContent = phrase;
+    dangerCheck.checked = false;
+    dangerInput.value = "";
+    dangerError.hidden = true;
+    dangerOk.disabled = true;
+
+    const readyAt = Date.now() + WAIT_MS;
+
+    function update() {
+      const left = Math.ceil((readyAt - Date.now()) / 1000);
+      const ready = dangerCheck.checked && dangerInput.value === phrase && left <= 0;
+      dangerOk.disabled = !ready;
+      dangerOk.textContent = left > 0 ? "Alles löschen (" + left + ")" : "Alles löschen";
+    }
+
+    update();
+    dangerTimer = setInterval(update, 250);
+    dangerSubmit = async () => {
+      render(await api("POST", "/api/memory/delete_all", { confirm_text: dangerInput.value, count }));
+    };
+    dangerUpdate = update;
+    dangerDialog.showModal();
+    dangerInput.value = "";
+  }
+
+  load();
+  return box;
+}
+
+// Dialog "Alle Erinnerungen löschen"
+const dangerDialog = document.getElementById("memory-danger");
+const dangerText = document.getElementById("danger-text");
+const dangerPhrase = document.getElementById("danger-phrase");
+const dangerCheck = document.getElementById("danger-check");
+const dangerInput = document.getElementById("danger-input");
+const dangerError = document.getElementById("danger-error");
+const dangerOk = document.getElementById("danger-ok");
+let dangerTimer = null;
+let dangerSubmit = null;
+let dangerUpdate = () => {};
+
+dangerCheck.addEventListener("change", () => dangerUpdate());
+dangerInput.addEventListener("input", () => dangerUpdate());
+dangerInput.addEventListener("paste", (event) => event.preventDefault());
+dangerInput.addEventListener("drop", (event) => event.preventDefault());
+document.getElementById("danger-cancel").addEventListener("click", () => dangerDialog.close());
+dangerDialog.addEventListener("close", () => {
+  clearInterval(dangerTimer);
+  dangerInput.value = "";
+  dangerCheck.checked = false;
+  dangerSubmit = null;
+  dangerUpdate = () => {};
+});
+document.getElementById("danger-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  if (dangerOk.disabled || !dangerSubmit) return;
+
+  dangerOk.disabled = true;
+  try {
+    await dangerSubmit();
+    dangerDialog.close();
+  } catch (error) {
+    dangerError.textContent = error.message;
+    dangerError.hidden = false;
+    dangerUpdate();
+  }
+});
 
 function renderSettings() {
   settingsNav.replaceChildren();
@@ -786,6 +998,11 @@ function renderSettings() {
   settingsRows.replaceChildren();
 
   page.rows.forEach((row) => {
+    if (row.type === "memory-list") {
+      settingsRows.appendChild(buildMemoryList());
+      return;
+    }
+
     const wrapper = document.createElement("div");
     wrapper.className = "setting-row" + (row.live ? "" : " unavailable");
 
@@ -847,6 +1064,6 @@ setInterval(pollBackground, 1000);
 // Start
 // ======================================================================
 
-addMessage("jarvis", GREETING);
+// Erst die Einstellungen laden, damit die Begruessung die richtige Anrede hat
+loadSettings().finally(() => addMessage("jarvis", greeting()));
 refreshTree();
-loadSettings();

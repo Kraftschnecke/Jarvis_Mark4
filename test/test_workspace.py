@@ -34,7 +34,7 @@ import workspace as ws_module
 from workspace import Workspace
 
 created_files = []
-ws_module.create_project_file = lambda pid, name: created_files.append((pid, name))
+ws_module.ensure_project_context = lambda pid, name: created_files.append((pid, name))
 
 CONVS = [(1, "Test B", None, None), (2, "Neue Unterhaltung", None, None)]
 db = {"projects": [(5, "Abnahmetest")], "convs": list(CONVS), "reset": [], "deleted": [], "renamed": []}

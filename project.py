@@ -1,5 +1,5 @@
 import db
-from project_context import create_project_file, delete_project_file
+import project_context
 
 
 def init_project_db():
@@ -38,6 +38,16 @@ def init_project_db():
             )
         """)
 
+        # Der Text "project.md" je Projekt (siehe project_context.py)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS project_contexts (
+                project_id INTEGER PRIMARY KEY,
+                content TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id)
+            )
+        """)
+
 
 def create_project(name, description=None):
     with db.connect() as connection:
@@ -54,7 +64,7 @@ def create_project(name, description=None):
 
         project_id = cursor.fetchone()[0]
 
-    create_project_file(project_id, name)
+    project_context.ensure_project_context(project_id, name)
 
     return project_id
 
@@ -99,13 +109,19 @@ def delete_project(project_id):
 
         cursor.execute(
             """
+            DELETE FROM project_contexts
+            WHERE project_id = %s
+            """,
+            (project_id, )
+        )
+
+        cursor.execute(
+            """
             DELETE FROM projects
             WHERE id = %s
             """,
             (project_id, )
         )
-
-    delete_project_file(project_id)
 
 
 def get_projects():
@@ -332,3 +348,4 @@ def delete_conversation(conversation_id):
 
 
 init_project_db()
+project_context.migrate_local_files()

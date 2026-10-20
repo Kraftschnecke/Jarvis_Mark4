@@ -62,15 +62,20 @@ dieser Test prüft Browser, echte Datenbank und echtes Modell zusammen.
 
 | # | Aktion | Erwartet | OK |
 |---|--------|----------|----|
-| D1 | Unten links `Settings` | Fenster mit 6 Kategorien, `General` offen, alles grau mit `Not available yet` | [ ] |
+| D1 | Unten links `Settings` | Fenster mit 4 Kategorien (Appearance, J.A.R.V.I.S., Memory, About), `Appearance` offen, nichts ist grau | [ ] |
 | D2 | Appearance → Theme `Light` | Sofort helles Design | [ ] |
 | D3 | Seite mit F5 neu laden | Bleibt hell, ohne kurzes dunkles Aufblitzen | [ ] |
 | D4 | Font size `18` (Tab drücken) | Schrift wird größer. Danach `99` → Fehlermeldung, Schrift bleibt | [ ] |
 | D5 | Theme `System` | Folgt dem Windows-Design | [ ] |
 | D6 | Theme zurück auf `Dark`, Font size `13` | Wie am Anfang | [ ] |
 | D7 | Memory → `Memory enabled` ausschalten, dann im Chat nach deinem Lieblingstier fragen | Jarvis weiß es nicht. Danach wieder einschalten, dann weiß er es | [ ] |
-| D8 | About | Version `Mark 3`, Python und Windows-Version stehen da | [ ] |
+| D8 | About | Version `Mark 4`, Python und Windows-Version stehen da | [ ] |
 | D9 | Esc oder `Schließen` | Fenster geht zu | [ ] |
+| D10 | Appearance → Accent color `British Racing Green` | Alle blauen Teile werden grün (Titel, Knöpfe, Auswahl). Mit `Light` und `Dark` ausprobieren | [ ] |
+| D11 | Seite mit F5 neu laden | Bleibt grün, ohne kurzes blaues Aufblitzen. Danach wieder auf `J.A.R.V.I.S. Blue` | [ ] |
+| D12 | J.A.R.V.I.S. → Address auf `Chef` ändern (Tab drücken), im Chat `Hallo` | Jarvis sagt `Chef` statt `Sir`. Auch feste Meldungen (z. B. `Öffne Projekt xyz`) nennen `Chef` | [ ] |
+| D13 | Address leeren oder nur Leerzeichen eingeben | Fehlermeldung, im Feld steht wieder `Chef`. Danach zurück auf `Sir` | [ ] |
+| D14 | F5 nach D12 | Begrüßung sagt `Guten Tag, Chef.` | [ ] |
 
 ## E. Timer und Hintergrund
 
@@ -98,6 +103,22 @@ dieser Test prüft Browser, echte Datenbank und echtes Modell zusammen.
 | G1 | Browserfenster auf Handybreite ziehen (unter ca. 700 px) | Sidebar verschwindet, oben links erscheint `☰` | [ ] |
 | G2 | `☰` klicken, Konversation wählen | Sidebar fährt aus und nach der Wahl wieder zu | [ ] |
 | G3 | Settings im schmalen Fenster | Kategorien stehen oben nebeneinander, alles bedienbar | [ ] |
+
+## H. Memory-Ansicht
+
+| # | Aktion | Erwartet | OK |
+|---|--------|----------|----|
+| H1 | Im Chat `Ich trinke gerne Kaffee.` schreiben, dann Settings → Memory | Unter `Stored information` steht ein Eintrag mit Typ `preference` und dem Wert Kaffee | [ ] |
+| H2 | `Aktualisieren` klicken | Die Liste lädt neu, die Zahl oben stimmt | [ ] |
+| H3 | `Memory enabled` ausschalten, Seite `Memory` neu öffnen | Die Einträge sind weiter sichtbar, mit dem Hinweis `Memory ist ausgeschaltet ...`. Danach wieder einschalten | [ ] |
+| H4 | Eintrag in der Datenbank (Neon-Konsole, Tabelle `memories`) ansehen | Dieselben Einträge wie auf der Seite | [ ] |
+| H5 | Bei einem Eintrag `Bearbeiten`, Wert ändern, `Speichern` | Der neue Wert steht in der Liste und in der Neon-Tabelle. Jarvis benutzt ihn ab der nächsten Nachricht | [ ] |
+| H6 | `Bearbeiten`, Wert ändern, `Abbrechen` | Nichts hat sich geändert | [ ] |
+| H7 | Bei einem Eintrag `Löschen`, dann `Abbrechen` | Eintrag bleibt | [ ] |
+| H8 | Bei einem Eintrag `Löschen`, dann `Löschen` bestätigen | Eintrag ist weg (Seite und Neon-Tabelle). Jarvis kennt die Information nicht mehr | [ ] |
+| H9 | `Alle löschen …` klicken. Haken setzen und den Satz tippen | Der Knopf bleibt grau, solange der Satz nicht exakt stimmt, der Haken fehlt oder die 5 Sekunden nicht um sind. Einfügen (Strg+V) im Feld geht nicht | [ ] |
+| H10 | Im selben Dialog `Abbrechen` | Es ist nichts gelöscht | [ ] |
+| H11 | **Nur wenn du die Einträge wirklich loswerden willst:** alles ausführen und löschen | Liste leer, `Alle löschen …` grau | [ ] |
 
 ---
 

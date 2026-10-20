@@ -160,4 +160,11 @@ result = j.process_message("Datenbank ist fertig")
 assert result["content"] == "Klingt gut."
 assert j.pending_project_confirmation is None
 
+# Die eingestellte Anrede gilt auch in den festen Texten
+import personality
+assert jarvis_module.build_confirmation_question("Decisions", "x").startswith("Sir, soll ich")
+personality.set_address("Chef")
+assert jarvis_module.build_confirmation_question("Decisions", "x").startswith("Chef, soll ich")
+personality.set_address("Sir")
+
 print("ALL TESTS PASSED")

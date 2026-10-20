@@ -88,4 +88,4 @@ class FakeProjectDB:
         w.delete_project_conversation = self.delete_conversation
         w.search_projects = self.search_projects
         w.get_conversation = self.get_conversation
-        w.create_project_file = lambda pid, name: self.files.append((pid, name))
+        w.ensure_project_context = lambda pid, name: self.files.append((pid, name))

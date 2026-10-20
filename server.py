@@ -13,7 +13,9 @@ Dinge:
                              (ohne "after": nur den aktuellen Stand "last" melden)
        GET  /api/projects    ->  {"projects": [...], "active": {...}}
        GET  /api/settings    ->  {"settings": {...}, "about": {...}}
+       GET  /api/memories    ->  {"enabled": true, "memories": [{"key", "value", "type"}]}
        POST /api/settings    {"category", "key", "value"}  (nur erlaubte Einstellungen)
+       POST /api/memory/...        update, delete (mit Bestaetigung), delete_all (exakter Satz + Anzahl)
        POST /api/project/...       open, new, rename, delete
        POST /api/conversation/...  open, new, rename, reset, delete
 
@@ -35,6 +37,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from config import SERVER_HOST, SERVER_PORT, VERSION
+from memory import MAX_VALUE_LENGTH, VALID_TYPES
+from personality import get_address, is_valid_address
 from workspace import WorkspaceError
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
@@ -58,11 +62,15 @@ def _is_int(value, low, high):
     return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
 
 
+ACCENT_COLORS = ("J.A.R.V.I.S. Blue", "British Racing Green")
+
 # Nur diese Einstellungen duerfen ueber die Seite geaendert werden, und nur
 # mit gueltigen Werten. Alles andere in settings.json bleibt unangetastet.
 EDITABLE_SETTINGS = {
     ("appearance", "theme"): lambda v: v in ("Dark", "Light", "System"),
     ("appearance", "font_size"): lambda v: _is_int(v, 11, 20),
+    ("appearance", "accent_color"): lambda v: v in ACCENT_COLORS,
+    ("jarvis", "address"): is_valid_address,
     ("memory", "enabled"): lambda v: isinstance(v, bool),
 }
 
@@ -77,6 +85,19 @@ def settings_state(jarvis):
                 f".{sys.version_info.micro} · {platform.system()} {platform.release()}"
             ),
         },
+    }
+
+
+# Diesen Satz muss man exakt eintippen, um ALLE Erinnerungen zu loeschen.
+DELETE_ALL_PHRASE = "ALLE ERINNERUNGEN LÖSCHEN"
+
+
+def memories_state(jarvis):
+    return {
+        "enabled": bool(jarvis.memory_enabled()),
+        "memories": jarvis.memory.list_all(),
+        "delete_all_phrase": DELETE_ALL_PHRASE,
+        "max_value_length": MAX_VALUE_LENGTH,
     }
 
 
@@ -164,7 +185,57 @@ def api_post(jarvis, path, data):
             raise ApiError(400, "Diese Einstellung kann so nicht geaendert werden.")
 
         jarvis.settings_manager.set(category, key, data["value"])
+        jarvis.apply_settings()
         return settings_state(jarvis)
+
+    if path == "/api/memory/update":
+        key = get_text(data, "key")
+        value = get_text(data, "value")
+        memory_type = data.get("type")
+
+        if memory_type not in VALID_TYPES:
+            raise ApiError(400, "Ungueltiger Typ.")
+
+        if len(value) > MAX_VALUE_LENGTH:
+            raise ApiError(
+                400, f"Der Wert ist zu lang (höchstens {MAX_VALUE_LENGTH} Zeichen)."
+            )
+
+        if not jarvis.memory.update(key, value, memory_type):
+            raise ApiError(404, "Diesen Eintrag gibt es nicht mehr.")
+
+        return memories_state(jarvis)
+
+    if path == "/api/memory/delete":
+        key = get_text(data, "key")
+
+        # Ohne ausdrueckliche Bestaetigung wird nichts geloescht
+        if data.get("confirm") is not True:
+            raise ApiError(400, "Löschen braucht eine Bestätigung.")
+
+        if not jarvis.memory.delete(key):
+            raise ApiError(404, "Diesen Eintrag gibt es nicht mehr.")
+
+        return memories_state(jarvis)
+
+    if path == "/api/memory/delete_all":
+        # Zwei Sicherungen: der exakte Satz UND die Anzahl, die der Nutzer
+        # gesehen hat. Hat sich inzwischen etwas geaendert, wird nichts geloescht.
+        if data.get("confirm_text") != DELETE_ALL_PHRASE:
+            raise ApiError(400, "Der Bestätigungssatz stimmt nicht.")
+
+        count = data.get("count")
+
+        if not isinstance(count, int) or isinstance(count, bool):
+            raise ApiError(400, "Ungueltige Anfrage")
+
+        if count != len(jarvis.memory.list_all()):
+            raise ApiError(
+                409, "Die Liste hat sich geändert. Bitte neu laden und noch einmal prüfen."
+            )
+
+        jarvis.memory.delete_all()
+        return memories_state(jarvis)
 
     if path == "/api/project/new":
         jarvis.add_project(get_text(data, "name"))
@@ -327,6 +398,13 @@ class JarvisHandler(BaseHTTPRequestHandler):
         if path == "/api/settings":
             return self.send_json(200, settings_state(self.server.jarvis))
 
+        if path == "/api/memories":
+            try:
+                return self.send_json(200, memories_state(self.server.jarvis))
+            except Exception:
+                traceback.print_exc()
+                return self.send_json(500, {"error": "Das Gedaechtnis konnte nicht geladen werden."})
+
         if path == "/api/projects":
             try:
                 return self.send_json(200, sidebar_state(self.server.jarvis))
@@ -429,7 +507,7 @@ def main():
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nJ.A.R.V.I.S.: Shutting down, Sir")
+        print(f"\nJ.A.R.V.I.S.: Shutting down, {get_address()}")
     finally:
         server.server_close()
 

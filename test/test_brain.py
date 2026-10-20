@@ -119,4 +119,20 @@ client = FakeClient()
 brain.ask_jarvis(client, FakeConversation(chat(41)), "", None)
 assert len(client.calls[-1]["input"]) == 41
 
+# 5) Anrede kommt in beide Prompts (Chat und Aufgaben-Antwort)
+import personality
+personality.set_address("Chef")
+client = FakeClient()
+brain.ask_jarvis(client, FakeConversation([{"role": "user", "content": "Hi"}]), "", None)
+assert "address me as Chef" in client.calls[-1]["instructions"]
+task = Task("GET_TIME", "Zeit")
+task.status = "COMPLETED"
+task.result = []
+client = FakeClient()
+brain.respond_to_task(client, "Zeit?", task)
+assert "address me as Chef" in client.calls[-1]["instructions"]
+assert "address the user as Chef when appropriate" in client.calls[-1]["input"]
+assert "Sir" not in client.calls[-1]["input"] and "Sir" not in client.calls[-1]["instructions"]
+personality.set_address("Sir")
+
 print("ALL TESTS PASSED")

@@ -10,6 +10,7 @@
       const t = localStorage.getItem("jarvis.theme");
       const light = t === "Light" || (t === "System" && matchMedia("(prefers-color-scheme: light)").matches);
       if (light) document.documentElement.dataset.theme = "light";
+      if (localStorage.getItem("jarvis.accent") === "green") document.documentElement.dataset.accent = "green";
       const f = parseInt(localStorage.getItem("jarvis.fontsize"), 10);
       if (f >= 11 && f <= 20) document.documentElement.style.fontSize = f + "px";
     } catch (e) { /* ohne Speicher gilt das Standard-Design */ }
@@ -65,6 +66,25 @@
       <div class="dialog-buttons">
         <button type="button" class="secondary" id="dialog-cancel">Abbrechen</button>
         <button type="submit" id="dialog-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Alle Erinnerungen loeschen (mehrere Sicherungen, siehe app.js) -->
+  <dialog id="memory-danger">
+    <form method="dialog" id="danger-form">
+      <h3>Alle Erinnerungen löschen?</h3>
+      <p id="danger-text"></p>
+      <label class="danger-check">
+        <input type="checkbox" id="danger-check">
+        Ich habe verstanden, dass das nicht rückgängig zu machen ist.
+      </label>
+      <p class="danger-hint">Tippe zur Bestätigung exakt (Einfügen ist gesperrt):<br><code id="danger-phrase"></code></p>
+      <input type="text" id="danger-input" autocomplete="off" spellcheck="false">
+      <p class="dialog-error" id="danger-error" hidden></p>
+      <div class="dialog-buttons">
+        <button type="button" class="secondary" id="danger-cancel">Abbrechen</button>
+        <button type="submit" class="danger-fill" id="danger-ok" disabled>Alles löschen</button>
       </div>
     </form>
   </dialog>

@@ -59,16 +59,19 @@ class FakeDB:
         self.connections = []
         self.fail_on = None
         self.rows = []
+        self.rowcount = 0
 
 
 class FakeCursor:
     def __init__(self, db):
         self.db = db
+        self.rowcount = 0
 
     def execute(self, sql, params=None):
         if self.db.fail_on and self.db.fail_on in sql:
             raise RuntimeError("DB kaputt")
         self.db.statements.append((" ".join(sql.split()), params))
+        self.rowcount = self.db.rowcount
 
     def fetchall(self):
         return self.db.rows
@@ -193,5 +196,70 @@ def broken(client, message):
 j.memory.process = broken
 result = j.process_message("Ich heisse Moritz")
 assert result == {"status": "response", "content": "ok"}
+
+# Anzeige (Step 3.2): list_all liest die Datenbank, sortiert nach Typ und Schluessel
+db.rows = [("farbe", "blau", "preference"), ("name", "Moritz", "fact")]
+listing = Memory.list_all(m)
+assert listing == [
+    {"key": "farbe", "value": "blau", "type": "preference"},
+    {"key": "name", "value": "Moritz", "type": "fact"},
+]
+assert "ORDER BY type, key" in db.statements[-1][0]
+db.rows = []
+assert Memory.list_all(m) == []
+db.fail_on = "SELECT key"
+try:
+    Memory.list_all(m)
+    raise AssertionError("Fehler haette durchschlagen muessen")
+except RuntimeError:
+    pass
+db.fail_on = None
+
+# Bearbeiten und Loeschen (Step 3.3)
+m.memories = {"a": {"value": "1", "type": "fact"}, "b": {"value": "2", "type": "fact"}}
+
+db.rowcount = 1
+assert m.update("a", "neu", "preference") is True
+sql, params = db.statements[-1]
+assert sql == "UPDATE memories SET value = %s, type = %s WHERE key = %s"
+assert params == ("neu", "preference", "a")
+assert m.memories["a"] == {"value": "neu", "type": "preference"}
+
+# Gibt es den Eintrag nicht (mehr): False, kein neuer Eintrag im Zwischenspeicher
+db.rowcount = 0
+assert m.update("weg", "x", "fact") is False
+assert "weg" not in m.memories
+
+db.rowcount = 1
+assert m.delete("a") is True
+assert db.statements[-1] == ("DELETE FROM memories WHERE key = %s", ("a",))
+assert "a" not in m.memories and "b" in m.memories
+db.rowcount = 0
+assert m.delete("a") is False
+
+db.rowcount = 7
+assert m.delete_all() == 7
+assert db.statements[-1][0] == "DELETE FROM memories"
+assert m.memories == {}
+db.rowcount = 0
+
+# Schlaegt die DB fehl, bleibt der Zwischenspeicher unveraendert
+m.memories = {"x": {"value": "1", "type": "fact"}}
+db.fail_on = "DELETE"
+for call in (lambda: m.delete("x"), lambda: m.delete_all()):
+    try:
+        call()
+        raise AssertionError("Fehler haette durchschlagen muessen")
+    except RuntimeError:
+        pass
+assert "x" in m.memories
+db.fail_on = "UPDATE"
+try:
+    m.update("x", "y", "fact")
+    raise AssertionError("Fehler haette durchschlagen muessen")
+except RuntimeError:
+    pass
+assert m.memories["x"]["value"] == "1"
+db.fail_on = None
 
 print("ALL TESTS PASSED")

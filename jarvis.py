@@ -6,6 +6,7 @@ from parallel import Job
 from config import OPENAI_TIMEOUT, TIMING_ENABLED
 from memory import Memory
 from settings_manager import SettingsManager
+from personality import get_address, set_address, DEFAULT_ADDRESS
 from task_registry import TaskRegistry
 from task_executor import execute_registered_task
 from brain import respond_to_task, ask_jarvis
@@ -40,7 +41,7 @@ def normalize_answer(message):
 
 def build_confirmation_question(section, content):
     return (
-        f"Sir, soll ich das im Project Context unter \"{section}\" "
+        f"{get_address()}, soll ich das im Project Context unter \"{section}\" "
         f"festhalten?\n"
         f"-> {content}\n"
         f"(ja / nein)"
@@ -58,10 +59,17 @@ class Jarvis:
         self.workspace = Workspace()
         self.pending_project_confirmation = None
         self.settings_manager = SettingsManager()
+        self.apply_settings()
         self.memory = Memory()
         self.memory.load()
         self.task_registry = TaskRegistry()
         register_all_tasks(self.task_registry)
+
+    def apply_settings(self):
+        """Uebernimmt Einstellungen, die im Programm gebraucht werden (Anrede)."""
+        set_address(
+            self.settings_manager.get("jarvis", "address", DEFAULT_ADDRESS)
+        )
 
     def memory_enabled(self):
         return bool(
@@ -305,18 +313,18 @@ class Jarvis:
 
             if not saved:
                 return (
-                    "Das konnte ich nicht speichern, Sir. "
+                    f"Das konnte ich nicht speichern, {get_address()}. "
                     "Vielleicht steht es schon im Project Context."
                 )
 
             return (
-                "Verstanden, Sir. "
+                f"Verstanden, {get_address()}. "
                 "Ich habe die Information in Project Context gespeichert."
             )
 
         if answer in NO_ANSWERS:
             return (
-                "Verstanden, Sir. "
+                f"Verstanden, {get_address()}. "
                 "Ich habe diese Information nicht gespeichert."
             )
 
@@ -378,7 +386,7 @@ class Jarvis:
             return {
                 "status": "response",
                 "content": (
-                    "Sir, bei der Verarbeitung ist ein Fehler aufgetreten "
+                    f"{get_address()}, bei der Verarbeitung ist ein Fehler aufgetreten "
                     f"({type(error).__name__}: {str(error)[:200]}). "
                     "Bitte versuche es noch einmal."
                 )
@@ -411,7 +419,7 @@ class Jarvis:
             if command["intent"] == "EXIT":
                 return {
                     "status": "exit",
-                    "content": "Shutting down, Sir"
+                    "content": f"Shutting down, {get_address()}"
                 }
 
             command_result = self.handle_command(
@@ -451,11 +459,11 @@ class Jarvis:
 
             if seconds < 60:
                 return (
-                    f"Sir, der Timer ist nach {seconds} Sekunden abgelaufen."
+                    f"{get_address()}, der Timer ist nach {seconds} Sekunden abgelaufen."
                 )
 
             minutes = seconds // 60
-            return f"Sir, der Timer ist nach {minutes} Minuten abgelaufen"
+            return f"{get_address()}, der Timer ist nach {minutes} Minuten abgelaufen"
 
     def check_background_results(self):
         results = self.get_background_results()

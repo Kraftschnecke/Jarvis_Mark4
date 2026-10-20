@@ -68,14 +68,14 @@ Start: `py main.py`
 ## D. Projektkontext und Rückfrage
 
 Projekt `Abnahmetest` und eine Konversation müssen offen sein (nach C11 der Fall).
-Die Datei zum Prüfen: `projects\<ID aus C1>\project.md`
+Den Text zum Prüfen zeigt `py show_project.py <ID aus C1>` (in einem zweiten Terminal).
 
 | # | Eingabe | Erwartet | OK |
 |---|---------|----------|----|
 | D1 | (KI) `Unser Ziel ist ein Roboter, der Socken sortiert.` | Normale Antwort **und** darunter: `Sir, soll ich das im Project Context unter "Goal" festhalten? ... (ja / nein)` | [ ] |
 | D2 | `ja` | `Verstanden, Sir. Ich habe die Information in Project Context gespeichert.` | [ ] |
-| D3 | `project.md` öffnen | Unter `## Goal` steht ein Eintrag zum Socken-Roboter | [ ] |
-| D4 | (KI) `Wir sollten Python für die Steuerung nehmen.`, dann `nein` | Rückfrage (Decisions). Nach `nein`: `... nicht gespeichert`. In `project.md` steht es **nicht** | [ ] |
+| D3 | `py show_project.py <ID>` ausführen | Unter `## Goal` steht ein Eintrag zum Socken-Roboter | [ ] |
+| D4 | (KI) `Wir sollten Python für die Steuerung nehmen.`, dann `nein` | Rückfrage (Decisions). Nach `nein`: `... nicht gespeichert`. Im Text von `show_project.py` steht es **nicht** | [ ] |
 | D5 | (KI) `Wir sollten Rust für die Steuerung nehmen.`, dann statt ja/nein: `Wie spät ist es?`, danach `ja` | Zeit wird genannt. Das spätere `ja` speichert **nichts** (Rückfrage ist verfallen) | [ ] |
 | D6 | (KI) `Die Sockenerkennung ist fertig.` | Wird **ohne Rückfrage** gespeichert (steht danach unter `## Current Status` oder `## Progress`, beides ist richtig) | [ ] |
 | D7 | `Was ist unser Projektziel?` | Nennt den Socken-Roboter (Projektkontext wird genutzt) | [ ] |

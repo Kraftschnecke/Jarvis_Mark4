@@ -3,6 +3,11 @@ from config import MODEL
 from llm_json import parse_llm_json
 
 
+# Erlaubte Typen und Laenge eines Werts (gilt fuer das Bearbeiten ueber die Seite)
+VALID_TYPES = ("fact", "preference")
+MAX_VALUE_LENGTH = 500
+
+
 class Memory:
     EMPTY_CONTEXT = "No stored information about the user."
 
@@ -75,6 +80,75 @@ class Memory:
                 "value": value,
                 "type": memory_type
             }
+
+    def list_all(self):
+        """Alle gespeicherten Eintraege aus der Datenbank (fuer die Anzeige).
+
+        Liest bewusst die Datenbank und nicht den Zwischenspeicher: Die Seite
+        soll zeigen, was wirklich gespeichert ist.
+        """
+        with db.connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute(
+                "SELECT key, value, type FROM memories ORDER BY type, key"
+            )
+
+            rows = cursor.fetchall()
+
+        return [
+            {"key": key, "value": value, "type": memory_type}
+            for key, value, memory_type in rows
+        ]
+
+    def update(self, key, value, memory_type):
+        """Aendert Wert und Typ eines vorhandenen Eintrags.
+
+        Gibt False zurueck, wenn es den Eintrag nicht (mehr) gibt. Neue
+        Eintraege entstehen nur ueber save().
+        """
+        with db.connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute(
+                "UPDATE memories SET value = %s, type = %s WHERE key = %s",
+                (value, memory_type, key)
+            )
+
+            found = cursor.rowcount > 0
+
+        if found:
+            self.memories[key] = {"value": value, "type": memory_type}
+        else:
+            self.memories.pop(key, None)
+
+        return found
+
+    def delete(self, key):
+        """Loescht einen Eintrag. False, wenn es ihn nicht (mehr) gibt."""
+        with db.connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute("DELETE FROM memories WHERE key = %s", (key,))
+
+            found = cursor.rowcount > 0
+
+        self.memories.pop(key, None)
+
+        return found
+
+    def delete_all(self):
+        """Loescht ALLE Eintraege. Gibt die Anzahl der geloeschten zurueck."""
+        with db.connect() as connection:
+            cursor = connection.cursor()
+
+            cursor.execute("DELETE FROM memories")
+
+            count = max(cursor.rowcount, 0)
+
+        self.memories.clear()
+
+        return count
 
     def get_context(self):
         if not self.memories:

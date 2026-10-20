@@ -22,6 +22,16 @@
   --accent-soft: rgba(22, 138, 173, 0.12);
 }
 
+/* Akzentfarbe "British Racing Green": im dunklen Design heller, damit Text lesbar bleibt */
+:root[data-accent="green"] {
+  --accent: #28895f;
+  --accent-soft: rgba(40, 137, 95, 0.16);
+}
+:root[data-accent="green"][data-theme="light"] {
+  --accent: #0b6b45;
+  --accent-soft: rgba(11, 107, 69, 0.12);
+}
+
 * { box-sizing: border-box; }
 
 html { font-size: 14px; }
@@ -380,6 +390,32 @@ dialog.settings { width: min(800px, 94vw); height: min(560px, 90vh); padding: 0;
 }
 .setting-control:disabled { opacity: 0.45; cursor: not-allowed; }
 input[type="checkbox"].setting-control { min-width: 0; width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* Gespeicherte Erinnerungen (Settings > Memory) */
+.memory-list { display: flex; flex-direction: column; gap: 6px; }
+.memory-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 2px 4px; }
+.memory-summary { font-size: 13px; color: var(--muted); }
+.memory-head button { padding: 5px 12px; font-size: 12px; }
+.memory-empty { margin: 4px 2px; font-size: 13px; color: var(--muted); }
+.memory-item { padding: 9px 14px; background: var(--base); border: 1px solid var(--line); border-radius: 10px; }
+.memory-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.memory-key { font-family: Consolas, "Courier New", monospace; font-size: 12px; color: var(--accent); overflow-wrap: anywhere; }
+.memory-type { flex: none; padding: 1px 8px; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; }
+.memory-value { margin-top: 3px; font-size: 13px; overflow-wrap: anywhere; white-space: pre-wrap; }
+
+.memory-actions { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 6px; }
+.memory-actions button { padding: 4px 10px; font-size: 12px; }
+.memory-actions select { padding: 4px 8px; font-size: 12px; background: var(--window); color: var(--text); border: 1px solid var(--line); border-radius: 8px; margin-right: auto; }
+.memory-edit { width: 100%; margin-top: 4px; padding: 7px 10px; font: inherit; font-size: 13px; color: var(--text); background: var(--window); border: 1px solid var(--line); border-radius: 8px; resize: vertical; }
+button.danger-text { color: #d9695f; }
+.danger-zone { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding: 10px 14px; border: 1px solid #b84a40; border-radius: 10px; }
+.danger-zone button { padding: 6px 12px; font-size: 12px; flex: none; }
+.danger-zone button:disabled { opacity: 0.45; cursor: not-allowed; }
+.danger-check { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 12px; font-size: 13px; }
+.danger-check input { width: auto; margin-top: 3px; accent-color: #b84a40; }
+.danger-hint { margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+.danger-hint code { display: inline-block; margin-top: 4px; padding: 2px 8px; color: var(--text); background: var(--window); border: 1px solid var(--line); border-radius: 6px; user-select: none; }
+#danger-ok:disabled { opacity: 0.45; cursor: not-allowed; }
 
 @media (max-width: 720px) {
   .settings-shell { flex-direction: column; }

@@ -1,4 +1,5 @@
 from jarvis import Jarvis
+from personality import get_address
 from cli_input import start_input
 from prompt_toolkit import print_formatted_text
 import time
@@ -20,7 +21,7 @@ def run():
             message = result.get("message")
 
             if message is None:
-                print_formatted_text("J.A.R.V.I.S.: Shutting down, Sir")
+                print_formatted_text(f"J.A.R.V.I.S.: Shutting down, {get_address()}")
                 break
 
             message = message.strip()
@@ -51,4 +52,4 @@ try:
     run()
 except KeyboardInterrupt:
     # Strg+C waehrend einer Anfrage oder im Leerlauf: sauber beenden
-    print_formatted_text("\nJ.A.R.V.I.S.: Shutting down, Sir")
+    print_formatted_text(f"\nJ.A.R.V.I.S.: Shutting down, {get_address()}")

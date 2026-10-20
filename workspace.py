@@ -3,13 +3,14 @@
 Hier steht, welches Projekt und welche Konversation gerade offen sind und wie
 man sie oeffnet, anlegt, umbenennt, zuruecksetzt und loescht. Die Klasse kennt
 weder das Sprachmodell noch Tasks oder Memory: sie arbeitet nur mit der
-Datenbank (project.py), der lokalen project.md (project_context.py) und dem
+Datenbank (project.py, project_context.py) und dem
 Gespraechsverlauf im Speicher.
 """
 
 from conversation import Conversation
+from personality import get_address
 from project_state import ProjectState
-from project_context import create_project_file
+from project_context import ensure_project_context
 from project import (
     search_projects,
     get_conversations,
@@ -51,10 +52,10 @@ class Workspace:
         projects = search_projects(name)
 
         if len(projects) == 0:
-            return "I couldn't find a matching project, Sir."
+            return f"I couldn't find a matching project, {get_address()}."
 
         if len(projects) > 1:
-            result = "I found multiple matching projects, Sir.\n"
+            result = f"I found multiple matching projects, {get_address()}.\n"
 
             for project in projects:
                 result += f"- {project[1]}\n"
@@ -63,10 +64,10 @@ class Workspace:
 
         self.project_state.set_project(projects[0])
 
-        # Das Projekt liegt in der Cloud-DB, die project.md lokal. Fehlt die
-        # Datei (z.B. anderer Rechner), wird sie aus der Vorlage angelegt.
-        # Eine vorhandene Datei bleibt unveraendert.
-        create_project_file(projects[0][0], projects[0][1])
+        # Projekt und project.md liegen in der Cloud-DB. Fehlt der Text (z.B.
+        # bei einem aelteren Projekt), wird er aus der Vorlage angelegt.
+        # Ein vorhandener Text bleibt unveraendert.
+        ensure_project_context(projects[0][0], projects[0][1])
 
         conversations = get_conversations(
             self.project_state.active_project[0]
@@ -84,7 +85,7 @@ class Workspace:
 
             return (
                 f"I opened the project {self.project_state.active_project[1]} "
-                f"and started a new conversation, Sir."
+                f"and started a new conversation, {get_address()}."
             )
 
         if len(conversations) == 1:
@@ -99,11 +100,11 @@ class Workspace:
             return (
                 f"I opened the project {self.project_state.active_project[1]} "
                 f" and the conversation "
-                f"{self.project_state.active_conversation[1]}, Sir."
+                f"{self.project_state.active_conversation[1]}, {get_address()}."
             )
 
         result = (
-            f"I found the project {self.project_state.active_project[1]}, Sir.\n"
+            f"I found the project {self.project_state.active_project[1]}, {get_address()}.\n"
             "Available conversations:\n"
         )
 
@@ -121,11 +122,11 @@ class Workspace:
             description
         )
 
-        return f"I created the project {name} with ID: {project_id}, Sir."
+        return f"I created the project {name} with ID: {project_id}, {get_address()}."
 
     def open_conversation(self, name):
         if self.project_state.active_project is None:
-            return "No project is currently active, Sir"
+            return f"No project is currently active, {get_address()}"
 
         conversation = get_conversation(
             self.project_state.active_project[0],
@@ -133,7 +134,7 @@ class Workspace:
         )
 
         if conversation is None:
-            return "I couldn't find that conversation, Sir."
+            return f"I couldn't find that conversation, {get_address()}."
 
         self.project_state.set_conversation(conversation)
 
@@ -145,12 +146,12 @@ class Workspace:
 
         return (
             f"I opened the conversation "
-            f"{self.project_state.active_conversation[1]}, Sir."
+            f"{self.project_state.active_conversation[1]}, {get_address()}."
         )
 
     def create_conversation(self, name):
         if self.project_state.active_project is None:
-            return "No project is currently active, Sir"
+            return f"No project is currently active, {get_address()}"
 
         self.project_state.set_conversation(
             create_conversation(
@@ -163,7 +164,7 @@ class Workspace:
 
         return (
             f"I created a new conversation "
-            f"{name} in {self.project_state.active_project[1]}, Sir."
+            f"{name} in {self.project_state.active_project[1]}, {get_address()}."
         )
 
     def get_conversations(self):
@@ -185,12 +186,12 @@ class Workspace:
 
     def rename_conversation(self, old_name, new_name):
         if self.project_state.active_project is None:
-            return "No project is currently active, Sir."
+            return f"No project is currently active, {get_address()}."
 
         conversation = self.get_conversation(old_name)
 
         if conversation is None:
-            return "I couldn't find that conversation, Sir."
+            return f"I couldn't find that conversation, {get_address()}."
 
         rename_conversation(
             conversation[0],
@@ -208,12 +209,12 @@ class Workspace:
 
         return (
             f"I renamed the conversation "
-            f"from {old_name} to {new_name}, Sir."
+            f"from {old_name} to {new_name}, {get_address()}."
         )
 
     def close_project(self):
         if self.project_state.active_project is None:
-            return "No project is currently active, Sir"
+            return f"No project is currently active, {get_address()}"
 
         project_name = self.project_state.active_project[1]
 
@@ -221,12 +222,12 @@ class Workspace:
         self.conversation.clear()
 
         return (
-            f"Closing project {project_name}, Sir"
+            f"Closing project {project_name}, {get_address()}"
         )
 
     def reset_conversation(self):
         if self.project_state.active_conversation is None:
-            return "No conversation is currently active, Sir"
+            return f"No conversation is currently active, {get_address()}"
 
         reset_project_conversation(
             self.project_state.active_conversation[0]
@@ -234,16 +235,16 @@ class Workspace:
 
         self.conversation.clear()
 
-        return "Conversation reset, Sir"
+        return f"Conversation reset, {get_address()}"
 
     def delete_conversation(self, name):
         if self.project_state.active_project is None:
-            return "No project is currently active, Sir."
+            return f"No project is currently active, {get_address()}."
 
         conversation = self.get_conversation(name)
 
         if conversation is None:
-            return "I couldn't find that conversation, Sir."
+            return f"I couldn't find that conversation, {get_address()}."
 
         delete_project_conversation(
             conversation[0]
@@ -256,7 +257,7 @@ class Workspace:
             self.project_state.active_conversation = None
             self.conversation.clear()
 
-        return f"I deleted the conversation {name}, Sir."
+        return f"I deleted the conversation {name}, {get_address()}."
 
     # ------------------------------------------------------------------
     # Aktionen ueber IDs (fuer die Seitenleiste der Web-Oberflaeche).
@@ -317,7 +318,7 @@ class Workspace:
         conversation = self._find_conversation(project_id, conversation_id)
 
         self.project_state.set_project(project)
-        create_project_file(project[0], project[1])
+        ensure_project_context(project[0], project[1])
 
         messages = load_conversation_messages(conversation[0])
 
@@ -341,7 +342,7 @@ class Workspace:
         self.project_state.set_project(project)
         self.project_state.set_conversation(None)
         self.conversation.clear()
-        create_project_file(project[0], project[1])
+        ensure_project_context(project[0], project[1])
 
         return True
 

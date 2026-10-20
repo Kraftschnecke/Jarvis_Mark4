@@ -5,28 +5,16 @@ from pathlib import Path
 class SettingsManager:
     """Central persistent settings store for J.A.R.V.I.S."""
 
+    # Nur Einstellungen, die wirklich etwas bewirken (Entscheidung Step 3.4).
+    # Alles andere in einer alten settings.json wird beim Laden verworfen.
     DEFAULT_SETTINGS = {
-        "general": {
-            "language": "English",
-            "startup_behavior": "Normal startup",
-            "confirmations": True,
-        },
         "appearance": {
             "theme": "Dark",
             "accent_color": "J.A.R.V.I.S. Blue",
             "font_size": 13,
-            "ui_scale": "100 %",
         },
         "jarvis": {
-            "name": "J.A.R.V.I.S.",
             "address": "Sir",
-            "personality": "Default",
-        },
-        "voice": {
-            "input_device": "Default input",
-            "output_device": "Default output",
-            "voice": "Default voice",
-            "speed": 100,
         },
         "memory": {
             "enabled": True,
@@ -92,5 +80,8 @@ class SettingsManager:
             return merged
         for category, values in settings.items():
             if category in merged and isinstance(values, dict):
-                merged[category].update(values)
+                # Nur Schluessel uebernehmen, die es noch gibt
+                for key, value in values.items():
+                    if key in merged[category]:
+                        merged[category][key] = value
         return merged

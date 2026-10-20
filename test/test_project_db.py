@@ -66,7 +66,6 @@ sys.modules["psycopg"] = fake_psycopg
 os.chdir(tempfile.mkdtemp())      # "projects/" liegt relativ zum Arbeitsordner
 
 import project                    # fuehrt init_project_db() gegen die Fake-DB aus
-from project_context import get_project_file
 
 
 def last_sql():
@@ -75,7 +74,7 @@ def last_sql():
 
 # 1) Beim Import werden die drei Tabellen angelegt
 created = " ".join(sql for sql, _ in db.statements)
-for table in ("projects", "conversations", "messages"):
+for table in ("projects", "conversations", "messages", "project_contexts"):
     assert f"CREATE TABLE IF NOT EXISTS {table}" in created, table
 assert db.connections[0].committed and not db.connections[0].closed
 
@@ -104,20 +103,22 @@ project.get_messages(7)
 sql, params = last_sql()
 assert "ORDER BY timestamp ASC, id ASC" in sql and params == (7,)
 
-# 4) Projekt anlegen: Datei wird erzeugt, ID kommt zurueck
+# 4) Projekt anlegen: ID kommt zurueck, der project.md-Text wird in der DB angelegt
+db.statements.clear()
 db.fetchone_queue.append((42,))
 assert project.create_project("Alpha", "Beschreibung") == 42
-assert get_project_file(42).exists()
-assert get_project_file(42).read_text().startswith("# Alpha")
+assert "INSERT INTO projects" in db.statements[0][0]
+sql, params = db.statements[1]
+assert "INSERT INTO project_contexts" in sql and "DO NOTHING" in sql
+assert params[0] == 42 and params[1].startswith("# Alpha")
 assert db.connections[-1].committed and not db.connections[-1].closed
 
-# 5) Projekt loeschen: erst Nachrichten, dann Unterhaltungen, dann Projekt
+# 5) Projekt loeschen: erst Nachrichten, Unterhaltungen und project.md-Text, dann Projekt
 db.statements.clear()
 project.delete_project(42)
 order = [sql.split()[2] for sql, _ in db.statements]
-assert order == ["messages", "conversations", "projects"], order
+assert order == ["messages", "conversations", "project_contexts", "projects"], order
 assert all(params == (42,) for _, params in db.statements)
-assert not get_project_file(42).exists()
 
 # 6) Unterhaltung: anlegen, umbenennen, zuruecksetzen, loeschen
 db.fetchone_queue.extend([(5,), (5, "Test 1", None, None)])

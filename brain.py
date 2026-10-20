@@ -1,6 +1,6 @@
 import config
 from config import MODEL
-from personality import JARVIS_PERSONALITY
+from personality import JARVIS_PERSONALITY, jarvis_personality, get_address
 import json
 
 
@@ -10,7 +10,7 @@ def build_instructions(memory, project_context=None):
     Memory und Projektkontext gehoeren hierher und nicht in die Nachricht:
     sonst behandelt das Modell sie wie Gespraechstext und zitiert sie.
     """
-    parts = [JARVIS_PERSONALITY]
+    parts = [jarvis_personality()]
 
     if memory:
         parts.append(
@@ -91,7 +91,7 @@ def respond_to_task(client, user_message, task):
     
     response = client.responses.create(
         model=MODEL,
-        instructions=JARVIS_PERSONALITY,
+        instructions=jarvis_personality(),
         input=f"""
 The user asked:
 
@@ -134,7 +134,7 @@ Do not mention internal concepts such as:
 - task_type
 - internal architecture
 
-Speak as J.A.R.V.I.S and address the user as Sir when appropriate.
+Speak as J.A.R.V.I.S and address the user as {get_address()} when appropriate.
 """
     )
 
