@@ -40,6 +40,7 @@ for name in (
     setattr(project_stub, name, lambda *a, **k: None)
 sys.modules["project"] = project_stub
 
+import db as db_module
 import memory as memory_module
 from memory import Memory
 import jarvis as jarvis_module
@@ -81,22 +82,24 @@ class FakeConnection:
         self.db = db
         self.closed = False
         self.committed = False
+        self.rolled_back = False
         db.connections.append(self)
 
     def cursor(self):
         return FakeCursor(self.db)
 
-    def __enter__(self):
-        return self
+    def commit(self):
+        self.committed = True
 
-    def __exit__(self, exc_type, exc, tb):
-        self.committed = exc_type is None
+    def rollback(self):
+        self.rolled_back = True
+
+    def close(self):
         self.closed = True
-        return False
 
 
 db = FakeDB()
-memory_module.psycopg = types.SimpleNamespace(
+db_module.psycopg = types.SimpleNamespace(
     connect=lambda url: FakeConnection(db)
 )
 
@@ -111,17 +114,20 @@ sql, params = db.statements[-1]
 assert "value = EXCLUDED.value" in sql and "type = EXCLUDED.type" in sql
 assert params == ("lieblingsfarbe", "blau", "preference")
 assert m.memories["lieblingsfarbe"] == {"value": "blau", "type": "preference"}
-assert db.connections[-1].closed and db.connections[-1].committed
+# Die Verbindung geht zurueck in den Pool (bleibt offen) und ist committet
+assert db.connections[-1].committed and not db.connections[-1].closed
 
-# 3) Schlaegt die DB fehl: kein Eintrag im Cache, Verbindung trotzdem zu
+# 3) Schlaegt die DB fehl: kein Eintrag im Cache, Verbindung zurueckgesetzt
 db.fail_on = "INSERT"
+db.connections[-1].committed = False     # Verbindung wird wiederverwendet
 try:
     m.save("alter", "30", "fact")
     raise AssertionError("Fehler haette durchschlagen muessen")
 except RuntimeError:
     pass
 assert "alter" not in m.memories
-assert db.connections[-1].closed and not db.connections[-1].committed
+assert db.connections[-1].rolled_back and not db.connections[-1].committed
+assert not db.connections[-1].closed      # nach rollback wieder brauchbar
 db.fail_on = None
 
 # 4) load() fuellt den Cache, get_context() nutzt ihn

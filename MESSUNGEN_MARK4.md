@@ -142,8 +142,58 @@ Das Skript hat seinen Zweck erfüllt: Tests mit Fakes hätten diesen Fehler nich
 
 ## Messung 3: nach Step 2.4 (Memory- und Projekt-Prüfung parallel)
 
-Gleiche zehn Nachrichten wie Messung 1, diesmal mit `ja` nach der Python-Entscheidung.
-Zielwerte: Chat ohne Projekt unter 3,5 s, Chat mit Projekt unter 4,5 s.
-Hinweis: Im Zeit-Log ist "KI-Zeit summiert" jetzt größer als "gesamt", weil Aufrufe gleichzeitig laufen.
+Datum: 2026-10-20, gleiche Bedingungen wie Messung 2 (Nachricht 7 wieder die kurze
+Fassung, das `ja` wurde nicht geschickt). Im Zeit-Log ist "KI-Zeit summiert" jetzt oft
+größer als "gesamt", weil Aufrufe gleichzeitig laufen.
 
-_noch nicht gemessen_
+| # | Nachricht | Aufrufe | Gesamt: M1 → M2 → M3 | KI-Zeit summiert (M3) |
+|---|-----------|--------:|---------------------:|----------------------:|
+| 1 | Hallo, wie geht's? | 4 → 3 → 3 | 6.25 → 4.70 → **3.91 s** | 5.06 s |
+| 2 | Wie spät ist es? | 3 → 2 → 2 | 3.29 → 3.45 → **2.95 s** | 2.95 s |
+| 3 | Was ist 15 mal 23? | 3 → 2 → 2 | 5.71 → 3.48 → **4.00 s** | 4.00 s |
+| 4 | Ich trinke gerne Kaffee. | 4 → 3 → 3 | 6.47 → 4.72 → **3.38 s** | 4.40 s |
+| 5 | Öffne Projekt Webtest2 | 1 → 1 → 1 | 3.56 → 2.15 → **2.11 s** | 1.57 s |
+| 6 | Öffne Konversation Erste | 1 → 1 → 1 | 1.92 → 2.14 → **2.61 s** | 2.03 s |
+| 7 | Wir entscheiden uns für Python (Projekt offen) | 5 → 4 → 4 | 10.91 → 7.26 → **4.21 s** | 6.85 s |
+| 8 | Suche im Web nach dem Wetter in Växjö. | 3 → 2 → 2 | 6.03 → 6.35 → **6.73 s** | 5.62 s |
+| 9 | Erkläre mir kurz, wie ein Timer funktioniert. (Projekt offen) | 5 → 4 → 4 | 7.68 → 6.38 → **5.22 s** | 6.76 s |
+| 10 | Stelle einen Timer auf 10 Sekunden. | 3 → 2 → 2 | 3.71 → 2.51 → **2.65 s** | 2.65 s |
+| | **Summe** | **32 → 24 → 24** | **55.53 → 43.14 → 37.77 s** | 41.89 s |
+
+Gesamt gegenüber Messung 1: **−32 %** (−17.8 s); gegenüber Messung 2: −12 % (−5.4 s).
+
+### Zielwerte (aus DESIGN_PARALLEL.md)
+
+| Ziel | Messwerte | erreicht? |
+|------|-----------|-----------|
+| Chat ohne Projekt unter 3,5 s | 3.91 s (Router-Ausreißer 2.59 s), 3.38 s | teilweise |
+| Chat mit Projekt unter 4,5 s | 4.21 s, 5.22 s (Antwort 2.86 s) | teilweise |
+
+### Was die Zahlen zeigen
+
+1. **Die Parallelisierung wirkt**, wo sie wirken soll: Nachricht 7 (Chat mit Projekt)
+   fiel von 7.26 auf 4.21 s, Nachricht 4 von 4.72 auf 3.38 s.
+2. **Was jetzt noch dauert:** Der Router ist mit durchschnittlich 1.89 s (1.43 bis 2.59 s)
+   die Hälfte der Gesamtzeit (18.9 von 37.8 s). Danach kommt die Antwort (1.3 bis 3.3 s).
+   Eine Chat-Nachricht besteht nur noch aus diesen zwei Wartezeiten
+   (Rechnung Nachricht 7: Router 1.83 + parallel 1.68 = 3.51 s).
+3. **Rest außerhalb der KI:** Bei Nachrichten mit offenem Projekt bleiben ca. 0.7 s übrig
+   (Nachricht 7: 4.21 − 3.51), das sind die Datenbank-Zugriffe (Nachrichten speichern,
+   Verbindung pro Funktion). Ohne offene Konversation ist dieser Rest praktisch 0.
+   "Öffne Projekt" und "Öffne Konversation": 0.5 bis 0.6 s außerhalb der KI.
+   → Step 2.5 (Verbindungspool) hat messbaren Spielraum.
+4. **Streuung:** Der Router schwankt zwischen 1.4 und 2.6 s, ohne dass sich der Prompt
+   ändert. Die Ausgabe-Tokens (73 bis 136) liegen deutlich über den alten Prüf-Aufrufen.
+   Einzelne Messungen (z. B. Nachricht 3: Antwort 2.57 s bei 131 Ausgabe-Tokens) sagen wenig,
+   erst die Summe über zehn Nachrichten.
+5. **Langsamste Aufgabe bleibt die Websuche** (6.73 s): 2261 Eingabe-Tokens und 303
+   Ausgabe-Tokens in der Antwort.
+
+### Ideen für später (nicht beschlossen)
+
+- Streaming (Step 2.7): Die Antwort erscheint, sobald das erste Wort da ist. Spart keine
+  Gesamtzeit, verkürzt aber die gefühlte Wartezeit bei langen Antworten deutlich.
+- "Spekulative" Antwort: `ask_jarvis` schon während des Routers starten und verwerfen,
+  wenn es ein Befehl oder eine Aufgabe war. Würde Chat-Nachrichten um fast die Router-Zeit
+  verkürzen, kostet aber bei jeder Aufgabe einen unnötigen Aufruf. Erst bewerten, wenn
+  der Anteil von Chat-Nachrichten im Alltag bekannt ist.

@@ -43,6 +43,7 @@ class FakeConnection:
     def __init__(self):
         self.closed = False
         self.committed = False
+        self.rolled_back = False
         db.connections.append(self)
 
     def cursor(self):
@@ -50,6 +51,9 @@ class FakeConnection:
 
     def commit(self):
         self.committed = True
+
+    def rollback(self):
+        self.rolled_back = True
 
     def close(self):
         self.closed = True
@@ -73,7 +77,7 @@ def last_sql():
 created = " ".join(sql for sql, _ in db.statements)
 for table in ("projects", "conversations", "messages"):
     assert f"CREATE TABLE IF NOT EXISTS {table}" in created, table
-assert db.connections[0].committed and db.connections[0].closed
+assert db.connections[0].committed and not db.connections[0].closed
 
 # 2) Suche: ILIKE, Platzhalter werden entschaerft, leere Suche findet nichts
 db.statements.clear()
@@ -105,7 +109,7 @@ db.fetchone_queue.append((42,))
 assert project.create_project("Alpha", "Beschreibung") == 42
 assert get_project_file(42).exists()
 assert get_project_file(42).read_text().startswith("# Alpha")
-assert db.connections[-1].committed and db.connections[-1].closed
+assert db.connections[-1].committed and not db.connections[-1].closed
 
 # 5) Projekt loeschen: erst Nachrichten, dann Unterhaltungen, dann Projekt
 db.statements.clear()
@@ -137,6 +141,13 @@ assert "INSERT INTO messages" in db.statements[0][0]
 assert db.statements[0][1] == (5, "user", "Hallo")
 assert "UPDATE conversations SET last_active" in db.statements[1][0]
 assert db.connections[-1].committed
+
+# 7b) Der Pool benutzt die Verbindung wieder: kein neues connect() pro Funktion
+before = len(db.connections)
+for _ in range(5):
+    project.get_messages(5)
+    project.get_projects()
+assert len(db.connections) == before, (before, len(db.connections))
 
 # 8) Gespeicherte Nachrichten -> Chatformat
 db.fetchall_queue.append([(1, 5, "user", "Hi", None), (2, 5, "assistant", "Hallo", None)])

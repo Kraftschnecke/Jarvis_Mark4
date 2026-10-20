@@ -1,7 +1,6 @@
-import psycopg
+import db
 from config import MODEL
 from llm_json import parse_llm_json
-from database import DATABASE_URL
 
 
 class Memory:
@@ -13,7 +12,7 @@ class Memory:
 
     def ensure_table(self):
         """Legt die Tabelle an, falls sie fehlt (z.B. frische Datenbank)."""
-        with psycopg.connect(DATABASE_URL) as connection:
+        with db.connect() as connection:
             connection.cursor().execute(
                 """
                 CREATE TABLE IF NOT EXISTS memories (
@@ -25,9 +24,9 @@ class Memory:
             )
 
     def save(self, key, value, memory_type):
-        # "with" committet bei Erfolg, rollt bei Fehler zurueck und schliesst
-        # die Verbindung in jedem Fall.
-        with psycopg.connect(DATABASE_URL) as connection:
+        # "with" committet bei Erfolg, rollt bei Fehler zurueck und gibt die
+        # Verbindung in jedem Fall an den Pool zurueck.
+        with db.connect() as connection:
             connection.cursor().execute(
                 """
                 INSERT INTO memories (key, value, type)
@@ -48,7 +47,7 @@ class Memory:
         }
 
     def get(self, key):
-        with psycopg.connect(DATABASE_URL) as connection:
+        with db.connect() as connection:
             cursor = connection.cursor()
 
             cursor.execute(
@@ -64,7 +63,7 @@ class Memory:
         return None
 
     def load(self):
-        with psycopg.connect(DATABASE_URL) as connection:
+        with db.connect() as connection:
             cursor = connection.cursor()
 
             cursor.execute("SELECT key, value, type FROM memories")
