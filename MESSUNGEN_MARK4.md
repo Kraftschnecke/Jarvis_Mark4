@@ -189,6 +189,60 @@ Gesamt gegenüber Messung 1: **−32 %** (−17.8 s); gegenüber Messung 2: −1
 5. **Langsamste Aufgabe bleibt die Websuche** (6.73 s): 2261 Eingabe-Tokens und 303
    Ausgabe-Tokens in der Antwort.
 
+## Messung 4: nach Step 2.5 (Verbindungspool)
+
+Gleiche zehn Nachrichten, `ja` nach der Python-Entscheidung (diese Nachricht ist nur
+eine Rückfrage-Antwort ohne KI-Aufruf), danach zweimal "Hallo".
+
+| # | Nachricht | KI-Aufrufe | Gesamt | Router | Rest außerhalb der KI* |
+|---|-----------|-----------:|-------:|-------:|-----------------------:|
+| 1 | Hallo, wie geht's? | 3 | 4.79 s | 2.20 s | 0.00 s |
+| 2 | Wie spät ist es? | 2 | 3.61 s | 2.22 s | 0.00 s |
+| 3 | Was ist 15 mal 23? | 2 | 4.44 s | 2.44 s | 0.01 s |
+| 4 | Ich trinke gerne Kaffee. | 3 | 3.27 s | 1.58 s | 0.00 s |
+| 5 | Öffne Projekt Webtest2 | 1 | 2.22 s | 2.02 s | 0.20 s |
+| 6 | Öffne Konversation Erste | 1 | 1.89 s | 1.68 s | 0.21 s |
+| 7 | Wir sollten uns entscheiden für Python | 4 | 3.82 s | 1.86 s | 0.14 s |
+| 8 | Suche im Web nach dem Wetter in Växjö. | 2 | 6.08 s | 2.43 s | 0.79 s** |
+| 9 | Erkläre mir kurz, wie ein Timer funktioniert. | 4 | 3.49 s | 1.54 s | 0.27 s |
+| 10 | Stelle einen Timer auf 10 Sekunden. | 2 | 2.81 s | 1.76 s | 0.00 s |
+
+Summe der zehn Nachrichten: **36.42 s, 24 KI-Aufrufe** (Messung 3: 37.77 s, 24 Aufrufe).
+
+\* Gesamt minus (Router + längster der danach folgenden Aufrufe), bei parallelen
+Aufrufen also minus den längsten. Werte um 0.00 sind Rundung.
+\*\* Websuche: Das ist die Laufzeit des Such-Werkzeugs selbst, kein Datenbank-Anteil.
+
+### Zielwerte (aus DESIGN_POOL.md)
+
+| Ziel | Messung 4 | Erreicht |
+|------|-----------|----------|
+| Nachrichten mit Projekt unter 3,6 s | 3.82 s, 3.49 s | teilweise |
+| "Öffne Projekt" unter 1,8 s | 2.22 s | nein |
+
+### Was die Zahlen zeigen
+
+1. **Der Datenbank-Anteil ist von ca. 0.5 bis 0.7 s auf ca. 0.15 bis 0.3 s gefallen**
+   (Nachricht 7: 0.7 → 0.14 s, "Öffne Projekt": 0.5–0.6 → 0.20 s, "Öffne Konversation":
+   0.5–0.6 → 0.21 s). Das ist der Gewinn des Pools.
+2. **Die beiden verfehlten Zielwerte liegen am Router, nicht an der Datenbank.** Bei
+   "Öffne Projekt" sind 2.02 von 2.22 s der Router-Aufruf (Messung 3: 1.57 s für dieselbe
+   Nachricht). Bei Nachricht 7 dauerte das langsamste parallele Modell 1.82 s. Die Ziele
+   waren mit der Streuung der KI-Aufrufe (±0.5 s) zu knapp gesetzt; der Pool hat sein
+   eigenes Ziel (Rest außerhalb der KI) erreicht.
+3. **Die Gesamtsumme sinkt nur um 1.35 s (3,6 %)**, weil in diesem Lauf der Router langsamer
+   war (Mittel 1.97 s statt 1.89 s). Der Pool spart in den vier Nachrichten mit
+   Datenbank-Anteil (5, 6, 7, 9) zusammen ca. 1.5 s (vorher ca. 2.4 s Rest, jetzt 0.82 s).
+   Mehr gibt es dort nicht zu holen.
+4. **Neue Reihenfolge in den Zeilen:** Bei den Nachrichten 7 und "Hallo" stehen die
+   parallelen Aufrufe in wechselnder Reihenfolge (sie enden zu unterschiedlichen
+   Zeitpunkten). Das ist erwartet.
+5. **`ja` kostet 0.00 s und keinen KI-Aufruf.** Die Rückfrage-Antwort wird ohne Modell
+   erkannt, wie geplant.
+6. **Was bleibt:** Der Router (Mittel 1.97 s) ist jetzt der größte einzelne Posten, danach
+   die Antwort. Weitere Ersparnis gibt es nur noch durch kürzere Router-Eingabe
+   (Versuch 2.3b ist gescheitert), eine spekulative Antwort oder Streaming.
+
 ### Ideen für später (nicht beschlossen)
 
 - Streaming (Step 2.7): Die Antwort erscheint, sobald das erste Wort da ist. Spart keine

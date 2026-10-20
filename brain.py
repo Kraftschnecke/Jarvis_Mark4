@@ -1,3 +1,4 @@
+import config
 from config import MODEL
 from personality import JARVIS_PERSONALITY
 import json
@@ -26,14 +27,38 @@ def build_instructions(memory, project_context=None):
     return "\n\n".join(parts)
 
 
+def limit_history(messages, limit):
+    """Nur die letzten `limit` Nachrichten; 0 oder weniger = alle.
+
+    Der Ausschnitt beginnt immer mit einer Nutzer-Nachricht: Eine Antwort ohne
+    die zugehoerige Frage waere ein halber Satz ohne Zusammenhang.
+    """
+    if limit <= 0 or len(messages) <= limit:
+        return list(messages)
+
+    recent = list(messages[-limit:])
+
+    while recent and recent[0]["role"] != "user":
+        recent.pop(0)
+
+    return recent
+
+
 def build_input(conversation):
-    """Gespraech als echte Rollen-Nachrichten (user / assistant)."""
+    """Gespraech als echte Rollen-Nachrichten (user / assistant).
+
+    Nur die letzten config.HISTORY_LIMIT Nachrichten: Je laenger ein Chat wird,
+    desto mehr Tokens (Kosten, Zeit) braucht jede Antwort. Aelteres Wissen
+    steckt im Memory und in project.md.
+    """
     return [
         {
             "role": "user" if message["role"] == "user" else "assistant",
             "content": message["content"]
         }
-        for message in conversation.get_messages()
+        for message in limit_history(
+            conversation.get_messages(), config.HISTORY_LIMIT
+        )
     ]
 
 

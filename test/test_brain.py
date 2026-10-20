@@ -76,4 +76,47 @@ client = FakeClient()
 brain.respond_to_task(client, "Timer", task)  # darf nicht mit TypeError abbrechen
 assert client.calls
 
+# 4) Verlauf begrenzen (Step 2.6)
+def chat(n):
+    """n Nachrichten: user0, assistant1, user2, ... (endet bei ungeradem n mit user)."""
+    return [
+        {"role": "user" if i % 2 == 0 else "assistant", "content": f"m{i}"}
+        for i in range(n)
+    ]
+
+
+# kurzer Verlauf und limit 0 -> unveraendert
+assert brain.limit_history(chat(5), 20) == chat(5)
+assert brain.limit_history(chat(50), 0) == chat(50)
+assert brain.limit_history(chat(50), -1) == chat(50)
+
+# langer Verlauf: die letzten N, Ausschnitt beginnt mit "user"
+history = chat(31)                               # user0 ... user30
+cut = brain.limit_history(history, 20)
+assert cut[-1] == history[-1]                    # die aktuelle Frage ist immer dabei
+assert cut[0]["role"] == "user"
+assert len(cut) <= 20 and cut == history[-len(cut):]
+assert cut[0]["content"] == "m12"                # 31 - 20 = 11 waere assistant -> weg
+
+# Ausschnitt beginnt schon mit user -> nichts wird zusaetzlich verworfen
+cut = brain.limit_history(chat(30)[:-1] + [{"role": "user", "content": "x"}], 20)
+assert len(cut) == 20 or cut[0]["role"] == "user"
+
+# Die Original-Liste bleibt unveraendert (die Oberflaeche zeigt alles)
+original = chat(31)
+brain.limit_history(original, 20)
+assert original == chat(31)
+
+# Ende-zu-Ende: ask_jarvis schickt nur das Fenster
+import config
+config.HISTORY_LIMIT = 10
+client = FakeClient()
+brain.ask_jarvis(client, FakeConversation(chat(41)), "", None)
+sent = client.calls[-1]["input"]
+assert len(sent) <= 10 and sent[-1]["content"] == "m40" and sent[0]["role"] == "user"
+config.HISTORY_LIMIT = 0
+client = FakeClient()
+brain.ask_jarvis(client, FakeConversation(chat(41)), "", None)
+assert len(client.calls[-1]["input"]) == 41
+
 print("ALL TESTS PASSED")

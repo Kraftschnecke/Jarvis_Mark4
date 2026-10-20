@@ -21,6 +21,11 @@ VERSION = "Mark 4"
 # Wie lange (Sekunden) auf eine Antwort des Sprachmodells gewartet wird
 OPENAI_TIMEOUT = float(os.getenv("JARVIS_OPENAI_TIMEOUT", "60"))
 
+# Wie viele der letzten Nachrichten der Konversation das Sprachmodell bekommt
+# (Step 2.6). Der volle Verlauf bleibt in der Datenbank und in der Oberflaeche.
+# 0 = kein Limit. Ueberschreibbar mit JARVIS_HISTORY_LIMIT in der .env
+HISTORY_LIMIT = int(os.getenv("JARVIS_HISTORY_LIMIT", "20"))
+
 # Zeit-Log der KI-Aufrufe (ai_log.py): JARVIS_TIMING=1 in der .env schaltet es ein
 TIMING_ENABLED = os.getenv("JARVIS_TIMING", "").strip().lower() in ("1", "true", "yes", "on")
 
