@@ -1,6 +1,9 @@
+import secrets
+import time
 import traceback
 
 from openai import OpenAI
+import action_log
 import ai_log
 from parallel import Job
 from config import OPENAI_TIMEOUT, TIMING_ENABLED
@@ -8,7 +11,10 @@ from memory import Memory
 from settings_manager import SettingsManager
 from personality import get_address, set_address, DEFAULT_ADDRESS
 from task_registry import TaskRegistry
-from task_executor import execute_registered_task
+import risk
+from task_executor import (
+    execute_registered_task, execute_task, prepare_registered_task
+)
 from brain import respond_to_task, ask_jarvis
 from project_context import (
     get_project_context,
@@ -48,7 +54,13 @@ def build_confirmation_question(section, content):
     )
 
 
+PENDING_ACTION_SECONDS = 120
+
+
 class Jarvis:
+    # Klassen-Standard: es gibt nie eine offene Rueckfrage, bevor eine entsteht
+    pending_action = None
+
     def __init__(self):
         self.client = OpenAI(timeout=OPENAI_TIMEOUT)
 
@@ -56,6 +68,7 @@ class Jarvis:
         if TIMING_ENABLED:
             self.client = ai_log.wrap(self.client)
 
+        action_log.enable()
         self.workspace = Workspace()
         self.pending_project_confirmation = None
         self.settings_manager = SettingsManager()
@@ -117,7 +130,7 @@ class Jarvis:
     def close_project(self):
         result = self.workspace.close_project()
         # Eine offene Rueckfrage gehoert zum geschlossenen Projekt.
-        self.pending_project_confirmation = None
+        self.clear_pending()
         return result
 
     def reset_conversation(self):
@@ -139,19 +152,19 @@ class Jarvis:
             project_id, conversation_id
         )
         # Eine offene Rueckfrage gehoert zur vorherigen Konversation.
-        self.pending_project_confirmation = None
+        self.clear_pending()
         return messages
 
     def select_project(self, project_id):
         changed = self.workspace.select_project(project_id)
         if changed:
-            self.pending_project_confirmation = None
+            self.clear_pending()
         return changed
 
     def add_project(self, name):
         project_id = self.workspace.add_project(name)
         # Das neue Projekt ist aktiv: alte Rueckfragen gelten nicht mehr.
-        self.pending_project_confirmation = None
+        self.clear_pending()
         return project_id
 
     def rename_project_by_id(self, project_id, new_name):
@@ -159,12 +172,12 @@ class Jarvis:
 
     def delete_project_by_id(self, project_id):
         self.workspace.delete_project_by_id(project_id)
-        self.pending_project_confirmation = None
+        self.clear_pending()
 
     def add_conversation(self, title, project_id=None):
         conversation_id = self.workspace.add_conversation(title, project_id)
         if project_id is not None:
-            self.pending_project_confirmation = None
+            self.clear_pending()
         return conversation_id
 
     def rename_conversation_by_id(self, project_id, conversation_id, new_title):
@@ -250,7 +263,7 @@ class Jarvis:
                 print(f"[projekt] Pruefung fehlgeschlagen: {error}")
 
         # Eine neue Nachricht macht jede alte offene Rueckfrage ungueltig.
-        self.pending_project_confirmation = None
+        self.clear_pending()
         confirmation_question = None
 
         if (
@@ -287,6 +300,127 @@ class Jarvis:
             message
         )
 
+    def clear_pending(self):
+        """Verwirft jede offene Rueckfrage (Projekt-Info und Aktion)."""
+        self.pending_project_confirmation = None
+        self.pending_action = None
+
+    # ---------- Aktionen mit Rueckfrage (Step 4.2) ----------
+
+    def run_task(self, message, route):
+        """Fuehrt eine Aufgabe aus - je nach Risikostufe sofort, nach Rueckfrage oder gar nicht."""
+        prepared = prepare_registered_task(
+            self.task_registry, route["task_type"], route["parameters"]
+        )
+        level = risk.task_risk(prepared) if prepared is not None else risk.SAFE
+
+        if level == risk.FORBIDDEN:
+            goal, _ = risk.describe_task(prepared)
+            action_log.record(prepared, "refused", "BLOCKED")
+
+            # Feste Antwort, kein Modell: Es gibt nichts zu verhandeln.
+            return {
+                "status": "response",
+                "content": (
+                    f"Das darf ich nicht tun, {get_address()}: {goal}. "
+                    "Diese Aktion ist bei mir grundsaetzlich gesperrt."
+                )
+            }
+
+        if level == risk.CONFIRM:
+            goal, details = risk.describe_task(prepared)
+            action_id = secrets.token_hex(8)
+
+            self.pending_action = {
+                "id": action_id,
+                "task": prepared,
+                "message": message,
+                "expires": time.monotonic() + PENDING_ACTION_SECONDS,
+            }
+
+            lines = [f"{get_address()}, soll ich das wirklich tun?", "", f"**{goal}**"]
+            lines += [f"`{d.replace(chr(96), chr(39))}`" for d in details]
+            lines += ["", "Antworte mit **ja** oder **nein**."]
+
+            return {
+                "status": "confirmation",
+                "content": "\n".join(lines),
+                "confirmation": {"id": action_id, "title": goal, "details": details},
+            }
+
+        task = execute_registered_task(
+            self.task_registry, route["task_type"], route["parameters"]
+        )
+
+        return {
+            "status": "response",
+            "content": respond_to_task(self.client, message, task)
+        }
+
+    def _finish_pending_action(self, pending, approve):
+        if not approve:
+            action_log.record(pending["task"], "declined", "DECLINED")
+
+            return f"Verstanden, {get_address()}. Ich habe nichts ausgefuehrt."
+
+        task = pending["task"]
+        execute_task(task, confirmed=True)
+
+        return respond_to_task(self.client, pending["message"], task)
+
+    def handle_pending_action(self, message):
+        """Chat-Antwort (ja/nein) auf eine offene Aktions-Rueckfrage, z.B. im CLI."""
+        pending = self.pending_action
+
+        if pending is None:
+            return None
+
+        # Gilt nur fuer die direkt folgende Nachricht, egal was sie ist.
+        self.pending_action = None
+
+        if time.monotonic() > pending["expires"]:
+            return None
+
+        answer = normalize_answer(message)
+
+        if answer in YES_ANSWERS:
+            return self._finish_pending_action(pending, True)
+
+        if answer in NO_ANSWERS:
+            return self._finish_pending_action(pending, False)
+
+        return None
+
+    def confirm_action(self, action_id, approve):
+        """Antwort per Button im Web. Nur die offene Rueckfrage mit genau dieser Nummer zaehlt."""
+        pending = self.pending_action
+        self.pending_action = None
+
+        if (
+            pending is None
+            or not isinstance(action_id, str)
+            or not secrets.compare_digest(pending["id"], action_id)
+            or time.monotonic() > pending["expires"]
+        ):
+            return {
+                "status": "response",
+                "content": (
+                    f"Diese Rueckfrage ist nicht mehr gueltig, {get_address()}. "
+                    "Bitte sage mir noch einmal, was ich tun soll."
+                )
+            }
+
+        try:
+            content = self._finish_pending_action(pending, approve is True)
+        except Exception as error:
+            traceback.print_exc()
+            content = (
+                f"{get_address()}, bei der Ausfuehrung ist ein Fehler aufgetreten "
+                f"({type(error).__name__}: {str(error)[:200]})."
+            )
+
+        return {"status": "response", "content": content}
+
     def handle_project_confirmation(self, message):
         pending = self.pending_project_confirmation
 
@@ -295,7 +429,7 @@ class Jarvis:
 
         # Eine Rueckfrage gilt nur fuer die direkt folgende Nachricht.
         # Egal was der User antwortet: danach ist sie verbraucht.
-        self.pending_project_confirmation = None
+        self.clear_pending()
 
         active_project = self.project_state.active_project
 
@@ -381,7 +515,7 @@ class Jarvis:
             traceback.print_exc()
 
             # Eine halb verarbeitete Nachricht darf keine Rueckfrage offen lassen
-            self.pending_project_confirmation = None
+            self.clear_pending()
 
             return {
                 "status": "response",
@@ -395,6 +529,14 @@ class Jarvis:
             ai_log.finish_message()
 
     def _process_message(self, message):
+
+        action_result = self.handle_pending_action(message)
+
+        if action_result is not None:
+            return {
+                "status": "response",
+                "content": action_result
+            }
 
         confirmation_result = self.handle_project_confirmation(
             message
@@ -433,20 +575,7 @@ class Jarvis:
                 }
 
         if route["kind"] == "TASK":
-            task = execute_registered_task(
-                self.task_registry,
-                route["task_type"],
-                route["parameters"]
-            )
-
-            return {
-                "status": "response",
-                "content": respond_to_task(
-                    self.client,
-                    message,
-                    task
-                )
-            }
+            return self.run_task(message, route)
 
         return self.process_normal_message(message)
 

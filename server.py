@@ -9,10 +9,13 @@ Dinge:
 
        POST /api/message     {"message": "..."}  ->  {"status": ..., "content": ..., "messages": [...]}
                              ("messages" nur, wenn ein Chat-Befehl die offene Konversation geaendert hat)
+       POST /api/confirm     {"id": "...", "approve": true|false}  (Antwort auf eine Rueckfrage, Step 4.2)
+                             ("/api/message" liefert dann status "confirmation" und ein "confirmation"-Objekt)
        GET  /api/background?after=<id>  ->  {"messages": [{"id": 3, "text": "..."}], "last": 3}
                              (ohne "after": nur den aktuellen Stand "last" melden)
        GET  /api/projects    ->  {"projects": [...], "active": {...}}
        GET  /api/settings    ->  {"settings": {...}, "about": {...}}
+       GET  /api/actions     ->  {"actions": [{"time", "goal", "details", "decision", "status", "summary"}]}  (Aktionsprotokoll, Step 4.3)
        GET  /api/memories    ->  {"enabled": true, "memories": [{"key", "value", "type"}]}
        POST /api/settings    {"category", "key", "value"}  (nur erlaubte Einstellungen)
        POST /api/memory/...        update, delete (mit Bestaetigung), delete_all (exakter Satz + Anzahl)
@@ -36,6 +39,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import action_log
 from config import SERVER_HOST, SERVER_PORT, VERSION
 from memory import MAX_VALUE_LENGTH, VALID_TYPES
 from personality import get_address, is_valid_address
@@ -166,6 +170,10 @@ def api_post(jarvis, path, data):
             "content": response["content"]
         }
 
+        # Aktion mit Rueckfrage: Der Browser zeigt Ja/Nein-Knoepfe
+        if response.get("status") == "confirmation":
+            result["confirmation"] = response["confirmation"]
+
         # Chat-Befehle ("Oeffne Projekt X", "Reset", ...) koennen die offene
         # Konversation wechseln oder leeren. Dann bekommt der Browser den neuen
         # Verlauf mit, sonst zeigt das Chatfenster noch den alten.
@@ -175,6 +183,15 @@ def api_post(jarvis, path, data):
             ]
 
         return result
+
+    if path == "/api/confirm":
+        # Antwort auf eine Rueckfrage (Step 4.2). Nur "approve": true fuehrt aus,
+        # alles andere (fehlt, "true" als Text, 1, ...) zaehlt als Nein.
+        response = jarvis.confirm_action(
+            get_text(data, "id"), data.get("approve") is True
+        )
+
+        return {"status": response["status"], "content": response["content"]}
 
     if path == "/api/settings":
         category = get_text(data, "category")
@@ -404,6 +421,13 @@ class JarvisHandler(BaseHTTPRequestHandler):
             except Exception:
                 traceback.print_exc()
                 return self.send_json(500, {"error": "Das Gedaechtnis konnte nicht geladen werden."})
+
+        if path == "/api/actions":
+            try:
+                return self.send_json(200, {"actions": action_log.recent(100)})
+            except Exception:
+                traceback.print_exc()
+                return self.send_json(500, {"error": "Das Aktionsprotokoll konnte nicht geladen werden."})
 
         if path == "/api/projects":
             try:

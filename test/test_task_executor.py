@@ -49,7 +49,7 @@ registry = TaskRegistry()
 registry.register(build_start_program_task())
 
 task = task_executor.execute_registered_task(
-    registry, "START_PROGRAM", {"program": "notepad"}
+    registry, "START_PROGRAM", {"program": "notepad"}, confirmed=True
 )
 assert task.status == "COMPLETED", task.error
 assert calls[0] == ("find_program", {"program": "notepad"})
@@ -59,7 +59,8 @@ assert isinstance(calls[1][1]["path"], str)
 # 2) Das LLM darf den Verweis auf das vorherige Ergebnis nicht ueberschreiben
 calls.clear()
 task = task_executor.execute_registered_task(
-    registry, "START_PROGRAM", {"program": "notepad", "path": r"C:\evil.exe"}
+    registry, "START_PROGRAM", {"program": "notepad", "path": r"C:\evil.exe"},
+    confirmed=True
 )
 assert calls[1][1]["path"] == r"C:\Windows\notepad.exe", calls[1]
 
@@ -73,7 +74,7 @@ def failing(action):
     calls.append(action.name)
     return ToolResult(success=False, error="Program not found: xyz")
 task_executor.execute_action = failing
-task = task_executor.execute_registered_task(registry, "START_PROGRAM", {"program": "xyz"})
+task = task_executor.execute_registered_task(registry, "START_PROGRAM", {"program": "xyz"}, confirmed=True)
 assert task.status == "FAILED" and task.error == "Program not found: xyz"
 assert calls == ["find_program"]
 

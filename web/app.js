@@ -118,6 +118,49 @@ function addMessage(kind, text, label) {
   renderText(bubble, text);
   chat.appendChild(bubble);
   chat.scrollTop = chat.scrollHeight;
+  return bubble;
+}
+
+// Rueckfrage vor einer Aktion (Step 4.2): Ja/Nein-Knoepfe unter der Frage
+function addConfirmButtons(bubble, id) {
+  const row = document.createElement("div");
+  row.className = "confirm-row";
+
+  const yes = document.createElement("button");
+  yes.type = "button";
+  yes.textContent = "Ausführen";
+
+  const no = document.createElement("button");
+  no.type = "button";
+  no.className = "secondary";
+  no.textContent = "Abbrechen";
+
+  async function answer(approve) {
+    yes.disabled = true;
+    no.disabled = true;
+    setBusy(true);
+    setStatus("busy", "THINKING...");
+
+    try {
+      const data = await api("POST", "/api/confirm", { id, approve });
+      row.remove();
+      addMessage("jarvis", data.content);
+      setStatus("ready", "READY");
+    } catch (error) {
+      row.remove();
+      addMessage("error", error.message);
+      setStatus("error", "OFFLINE");
+    } finally {
+      setBusy(false);
+      if (!ended) input.focus();
+    }
+  }
+
+  yes.addEventListener("click", () => answer(true));
+  no.addEventListener("click", () => answer(false));
+  row.append(yes, no);
+  bubble.appendChild(row);
+  chat.scrollTop = chat.scrollHeight;
 }
 
 function showHistory(messages) {
@@ -136,6 +179,8 @@ function showHistory(messages) {
 async function sendMessage(text) {
   setBusy(true);
   setStatus("busy", "THINKING...");
+  // Eine neue Nachricht beantwortet keine alte Rueckfrage mehr
+  document.querySelectorAll(".confirm-row").forEach((row) => row.remove());
   addMessage("user", text);
 
   try {
@@ -148,7 +193,11 @@ async function sendMessage(text) {
       addMessage("user", text);
     }
 
-    addMessage("jarvis", data.content);
+    const bubble = addMessage("jarvis", data.content);
+
+    if (data.status === "confirmation" && data.confirmation) {
+      addConfirmButtons(bubble, data.confirmation.id);
+    }
 
     if (data.status === "exit") {
       ended = true;
@@ -642,6 +691,12 @@ const PAGES = [
     ],
   },
   {
+    key: "Activity", icon: "📋", desc: "Was J.A.R.V.I.S. getan hat: Aktionen, Rückfragen und Absagen. Nur zum Ansehen.",
+    rows: [
+      { type: "action-list", live: true },
+    ],
+  },
+  {
     key: "About", icon: "ℹ", desc: "Information about this J.A.R.V.I.S. build.",
     rows: [
       { label: "Version", type: "readonly", live: true, text: () => about.version },
@@ -774,6 +829,72 @@ function smallButton(label, className, onClick) {
   button.type = "button";
   button.addEventListener("click", onClick);
   return button;
+}
+
+// Aktionsprotokoll (Settings > Activity), nur lesen. Wieder nur textContent.
+const DECISION_LABELS = {
+  auto: "automatisch",
+  confirmed: "von dir bestätigt",
+  declined: "von dir abgelehnt",
+  refused: "verboten",
+  blocked: "blockiert",
+};
+
+const STATUS_LABELS = {
+  COMPLETED: "ausgeführt",
+  FAILED: "Fehler",
+  BLOCKED: "nicht ausgeführt",
+  DECLINED: "nicht ausgeführt",
+};
+
+function formatActionTime(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("de-DE", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+}
+
+function buildActionList() {
+  const box = el("div", "action-list");
+
+  async function load() {
+    try {
+      render(await api("GET", "/api/actions"));
+    } catch (error) {
+      box.replaceChildren(el("p", "memory-empty", error.message), smallButton("Aktualisieren", "secondary", load));
+    }
+  }
+
+  function render(data) {
+    box.replaceChildren();
+
+    const head = el("div", "memory-head");
+    head.append(
+      el("span", "memory-summary", data.actions.length === 0 ? "Noch keine Einträge" : "Letzte " + data.actions.length + " Einträge, neueste zuerst"),
+      smallButton("Aktualisieren", "secondary", load)
+    );
+    box.appendChild(head);
+
+    data.actions.forEach((entry) => {
+      const item = el("div", "action-item action-" + entry.status.toLowerCase());
+      const top = el("div", "memory-top");
+      top.append(el("span", "memory-key", entry.goal), el("span", "memory-type", formatActionTime(entry.time)));
+      item.appendChild(top);
+
+      entry.details.forEach((detail) => item.appendChild(el("code", "action-detail", detail)));
+
+      const decision = DECISION_LABELS[entry.decision] || entry.decision;
+      const status = STATUS_LABELS[entry.status] || entry.status;
+      item.appendChild(el("div", "action-state", decision + " · " + status));
+
+      if (entry.summary) item.appendChild(el("div", "memory-value", entry.summary));
+      box.appendChild(item);
+    });
+  }
+
+  load();
+  return box;
 }
 
 function buildMemoryList() {
@@ -998,6 +1119,11 @@ function renderSettings() {
   settingsRows.replaceChildren();
 
   page.rows.forEach((row) => {
+    if (row.type === "action-list") {
+      settingsRows.appendChild(buildActionList());
+      return;
+    }
+
     if (row.type === "memory-list") {
       settingsRows.appendChild(buildMemoryList());
       return;

@@ -99,12 +99,12 @@ Den Text zum Prüfen zeigt `py show_project.py <ID aus C1>` (in einem zweiten Te
 
 | # | Eingabe | Erwartet | OK |
 |---|---------|----------|----|
-| F1 | `Starte Notepad.` | Notepad öffnet sich | [ ] |
-| F2 | (KI) `Öffne den Editor.` | Notepad öffnet sich (wird wie "Starte Notepad" behandelt) | [ ] |
+| F1 | `Starte Notepad.`, dann auf die Rückfrage `ja` | Erst die Rückfrage (Notepad noch zu), nach `ja` öffnet sich Notepad | [ ] |
+| F2 | (KI) `Öffne den Editor.`, dann `ja` | Rückfrage, nach `ja` öffnet sich Notepad (wird wie "Starte Notepad" behandelt) | [ ] |
 | F3 | `Starte Chrome.` (nur wenn Chrome **nicht** in `programs.json` steht) | Nichts startet. Jarvis sagt, dass er das Programm nicht kennt / nicht freigegeben ist | [ ] |
-| F4 | Eigenes Spiel in `programs.json` eintragen (Vorlage: `programs.example.json`, Pfade mit `/`), `py main.py` neu, dann `Starte <Name>` | Das Spiel startet | [ ] |
-| F5 | `Öffne die Datei C:\Users\morit\Desktop\jarvis_test.txt` | Datei öffnet sich, Text `Hallo vom Abnahmetest` | [ ] |
-| F6 | `Öffne die Datei C:\Windows\System32\calc.exe` | Rechner startet **nicht**. Jarvis erklärt, dass er Programmdateien nicht als Datei öffnet | [ ] |
+| F4 | Eigenes Spiel in `programs.json` eintragen (Vorlage: `programs.example.json`, Pfade mit `/`), `py main.py` neu, dann `Starte <Name>` und `ja` | Rückfrage, nach `ja` startet das Spiel | [ ] |
+| F5 | `Öffne die Datei C:\Users\morit\Desktop\jarvis_test.txt`, dann `ja` | Rückfrage mit dem Pfad, nach `ja` öffnet sich die Datei, Text `Hallo vom Abnahmetest` | [ ] |
+| F6 | `Öffne die Datei C:\Windows\System32\calc.exe` | Rechner startet **nicht**. Jarvis sagt sofort "Das darf ich nicht tun" (ohne Rückfrage, Programmdateien sind verboten) | [ ] |
 | F7 | `Öffne die Datei C:\gibt\es\nicht.txt` | Freundliche Fehlermeldung, kein Absturz | [ ] |
 
 ## G. Web

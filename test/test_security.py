@@ -207,7 +207,7 @@ register_all_tasks(registry)
 
 started.clear()
 task = task_executor.execute_registered_task(
-    registry, "START_PROGRAM", {"program": "rainbow six"}
+    registry, "START_PROGRAM", {"program": "rainbow six"}, confirmed=True
 )
 assert task.status == "COMPLETED", task.error
 assert started == ["C:/Games/R6/RainbowSix.exe"]
@@ -222,15 +222,17 @@ assert started == []
 
 # ... oder ueber START_PROGRAM mit einem Pfad als "Programmname"
 task = task_executor.execute_registered_task(
-    registry, "START_PROGRAM", {"program": "C:/Users/x/Downloads/boese.exe"}
+    registry, "START_PROGRAM", {"program": "C:/Users/x/Downloads/boese.exe"},
+    confirmed=True
 )
 assert task.status == "FAILED" and started == []
 
 # OPEN_FILE mit einer exe
 task = task_executor.execute_registered_task(
-    registry, "OPEN_FILE", {"path": make("trojaner.exe")}
+    registry, "OPEN_FILE", {"path": make("trojaner.exe")}, confirmed=True
 )
-assert task.status == "FAILED" and started == []
+# Programmdateien sind forbidden: sie laufen auch mit Bestaetigung nicht
+assert task.status == "BLOCKED" and started == []
 
 
 # =====================================================================

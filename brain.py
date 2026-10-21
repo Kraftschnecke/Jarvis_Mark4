@@ -1,4 +1,5 @@
 import config
+from untrusted import wrap_untrusted, UNTRUSTED_RULES
 from config import MODEL
 from personality import JARVIS_PERSONALITY, jarvis_personality, get_address
 import json
@@ -89,9 +90,16 @@ def respond_to_task(client, user_message, task):
         task_results, ensure_ascii=False, indent=2, default=str
     )
     
+    # Ergebnisse und Fehlertext stammen aus Tools (z.B. dem Internet): als
+    # unvertraute Daten verpackt, nie als Anweisung (siehe untrusted.py)
+    task_result_block = wrap_untrusted(f"task:{task.task_type}", task_result_context)
+    task_error_block = wrap_untrusted(
+        f"task-error:{task.task_type}", task.error if task.error else "None"
+    )
+
     response = client.responses.create(
         model=MODEL,
-        instructions=jarvis_personality(),
+        instructions=jarvis_personality() + UNTRUSTED_RULES,
         input=f"""
 The user asked:
 
@@ -109,10 +117,10 @@ Task status:
 {task.status}
 
 Task result:
-{task_result_context}
+{task_result_block}
 
 Task error:
-{task.error}
+{task_error_block}
 
 Respond naturally to the user's original request based on the task result.
 

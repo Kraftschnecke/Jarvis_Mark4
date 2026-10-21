@@ -127,6 +127,15 @@ body {
   border: 1px dashed #d9695f;
   color: #d9695f;
 }
+.confirm-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.confirm-row button.secondary {
+  background: var(--button);
+  color: inherit;
+}
 .message .label {
   display: block;
   font-size: 11px;
@@ -422,3 +431,17 @@ button.danger-text { color: #d9695f; }
   .settings-nav { flex: 0 0 auto; flex-direction: row; overflow-x: auto; padding: 8px; border-right: 0; border-bottom: 1px solid var(--line); }
   .settings-nav button { width: auto; white-space: nowrap; }
 }
+
+/* Aktionsprotokoll (Settings > Activity) */
+.action-list { display: flex; flex-direction: column; gap: 10px; }
+.action-item {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--base);
+}
+.action-item.action-failed, .action-item.action-blocked { border-left-color: #d9695f; }
+.action-item.action-declined { border-left-color: var(--muted); }
+.action-detail { display: block; margin-top: 4px; overflow-wrap: anywhere; }
+.action-state { margin-top: 6px; font-size: 12px; color: var(--muted); }
