@@ -62,12 +62,12 @@ assert text == brain.JARVIS_PERSONALITY, text
 assert "None" not in brain.build_instructions("x", None)
 
 # 3) Timer liefert ein ToolResult (kein Thread), und respond_to_task kann es serialisieren
-action_executor.start_timer = lambda seconds: object()
+action_executor.start_timer = lambda seconds, name=None: object()
 result = action_executor.execute_action(
     Action("start_timer", {"value": 10, "unit": "seconds"})
 )
 assert isinstance(result, ToolResult) and result.success
-assert result.data == {"seconds": 10}
+assert result.data == {"seconds": 10, "name": "Timer"}
 
 task = Task("START_TIMER", "Timer")
 task.status = "COMPLETED"

@@ -21,6 +21,11 @@ function greeting() {
 
 let busy = false;
 let ended = false;
+function readyLabel() {
+  return guestMode ? "GAST" : "READY";
+}
+
+let guestMode = false;      // Server laeuft mit --guest: nur plaudern, siehe guest.py
 let projects = [];
 let active = { project_id: null, conversation_id: null };
 const expanded = loadExpanded();
@@ -145,7 +150,7 @@ function addConfirmButtons(bubble, id) {
       const data = await api("POST", "/api/confirm", { id, approve });
       row.remove();
       addMessage("jarvis", data.content);
-      setStatus("ready", "READY");
+      setStatus("ready", readyLabel());
     } catch (error) {
       row.remove();
       addMessage("error", error.message);
@@ -159,6 +164,62 @@ function addConfirmButtons(bubble, id) {
   yes.addEventListener("click", () => answer(true));
   no.addEventListener("click", () => answer(false));
   row.append(yes, no);
+  bubble.appendChild(row);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+// Plan zur Freigabe (Step 5.3): Ausfuehren / Abbrechen unter dem angezeigten Plan.
+// Waehrend der Plan laeuft, gibt es einen Stopp-Knopf (haelt vor dem naechsten Schritt an).
+function addPlanButtons(bubble, id) {
+  const row = el("div", "confirm-row");
+  const run = el("button", "", "Plan ausführen");
+  const cancel = el("button", "secondary", "Abbrechen");
+  run.type = "button";
+  cancel.type = "button";
+
+  async function answer(approve) {
+    run.disabled = true;
+    cancel.disabled = true;
+    setBusy(true);
+    planRunning = approve;
+    updateStopButton();
+    setStatus("busy", approve ? "PLAN LÄUFT..." : "THINKING...");
+
+    if (approve) {
+      const stop = el("button", "secondary", "Stopp");
+      stop.type = "button";
+      stop.addEventListener("click", async () => {
+        stop.disabled = true;
+        stop.textContent = "Stoppe …";
+        try {
+          await api("POST", "/api/plan/abort", {});
+        } catch (error) {
+          stop.textContent = "Stopp fehlgeschlagen";
+        }
+      });
+      row.replaceChildren(el("span", "plan-running", "Plan läuft …"), stop);
+    }
+
+    try {
+      const data = await api("POST", "/api/plan/confirm", { id, approve });
+      row.remove();
+      addMessage("jarvis", data.content);
+      setStatus("ready", readyLabel());
+    } catch (error) {
+      row.remove();
+      addMessage("error", error.message);
+      setStatus("error", "OFFLINE");
+    } finally {
+      planRunning = false;
+      updateStopButton();
+      setBusy(false);
+      if (!ended) input.focus();
+    }
+  }
+
+  run.addEventListener("click", () => answer(true));
+  cancel.addEventListener("click", () => answer(false));
+  row.append(run, cancel);
   bubble.appendChild(row);
   chat.scrollTop = chat.scrollHeight;
 }
@@ -181,6 +242,7 @@ async function sendMessage(text) {
   setStatus("busy", "THINKING...");
   // Eine neue Nachricht beantwortet keine alte Rueckfrage mehr
   document.querySelectorAll(".confirm-row").forEach((row) => row.remove());
+  voice.stopSpeaking();
   addMessage("user", text);
 
   try {
@@ -194,19 +256,24 @@ async function sendMessage(text) {
     }
 
     const bubble = addMessage("jarvis", data.content);
+    speakReply(data.content);
 
     if (data.status === "confirmation" && data.confirmation) {
       addConfirmButtons(bubble, data.confirmation.id);
     }
 
-    if (data.status === "exit") {
+    if (data.status === "plan" && data.plan) {
+      addPlanButtons(bubble, data.plan.id);
+    }
+
+    if (data.status === "exit" && !guestMode) {
       ended = true;
       input.disabled = true;
       setStatus("ready", "BEENDET");
       return;
     }
 
-    setStatus("ready", "READY");
+    setStatus("ready", readyLabel());
   } catch (error) {
     addMessage("error", error.message);
     setStatus("error", "OFFLINE");
@@ -234,6 +301,98 @@ composer.addEventListener("submit", (event) => {
   input.value = "";
   resizeInput();
   sendMessage(text);
+});
+
+// ======================================================================
+// Sprache (Step 6): Vorlesen und Push-to-talk, siehe voice.js
+// ======================================================================
+
+let speakingNow = false;
+let planRunning = false;
+
+// Stopp-Knopf: sichtbar, solange Jarvis spricht oder ein Plan laeuft
+function updateStopButton() {
+  stopButton.hidden = !(speakingNow || planRunning);
+}
+
+const voice = window.JarvisVoice.createVoice({
+  onSpeaking: (value) => { speakingNow = value; updateStopButton(); },
+  synth: window.speechSynthesis,
+  Utterance: window.SpeechSynthesisUtterance,
+  Recognition: window.SpeechRecognition || window.webkitSpeechRecognition,
+  Audio: window.Audio,
+  createObjectURL: (blob) => URL.createObjectURL(blob),
+  revokeObjectURL: (url) => URL.revokeObjectURL(url),
+  // Stimme vom Server (OpenAI): Text hin, MP3 zurueck. Welche Stimme, bestimmt der Server.
+  fetchAudio: async (text, signal) => {
+    const response = await fetch("/api/speak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+      signal,
+    });
+    if (!response.ok) throw new Error("speak " + response.status);
+    return response.blob();
+  },
+  onFallback: () => {
+    if (fallbackShown) return;
+    fallbackShown = true;
+    addMessage("error", "Die Stimme von OpenAI ist gerade nicht erreichbar. Ich nutze vorübergehend die Browser-Stimme.");
+  },
+});
+let fallbackShown = false;
+const micButton = document.getElementById("mic");
+const stopButton = document.getElementById("stop");
+
+stopButton.addEventListener("click", async () => {
+  voice.stopSpeaking();
+  if (planRunning) {
+    try { await api("POST", "/api/plan/abort", {}); } catch (error) { /* Plan endet ohnehin */ }
+  }
+});
+
+function voiceSetting(key) {
+  return (settings.voice || {})[key];
+}
+
+// Nur wenn du es eingeschaltet hast (Standard: aus) und nur Antworten von J.A.R.V.I.S.
+function speakReply(text) {
+  if (voiceSetting("output") === true) voice.speak(text, voiceSetting("speed"), voiceSetting("engine"));
+}
+
+function applyVoice() {
+  if (voiceSetting("output") !== true) voice.stopSpeaking();
+  const show = voiceSetting("input") === true && voice.canListen();
+  micButton.hidden = !show;
+  if (!show && voice.isListening()) voice.stopListening();
+}
+
+function micDown(event) {
+  if (event.repeat || busy || ended || voice.isListening()) return;
+  voice.startListening({
+    onState: (state) => micButton.classList.toggle("listening", state === "listening"),
+    onText: (text) => {
+      // Gesprochener Text wird wie getippter behandelt, mit denselben Pruefungen
+      if (busy || ended) return;
+      sendMessage(text);
+    },
+    onError: (code) => addMessage("error", "Spracheingabe nicht möglich (" + code + ")."),
+  }, voiceSetting("input_language"));
+}
+
+function micUp() {
+  voice.stopListening();
+}
+
+micButton.addEventListener("pointerdown", (event) => { event.preventDefault(); micDown(event); });
+micButton.addEventListener("pointerup", micUp);
+micButton.addEventListener("pointerleave", micUp);
+micButton.addEventListener("pointercancel", micUp);
+micButton.addEventListener("keydown", (event) => {
+  if (event.key === " " || event.key === "Enter") { event.preventDefault(); micDown(event); }
+});
+micButton.addEventListener("keyup", (event) => {
+  if (event.key === " " || event.key === "Enter") micUp();
 });
 
 // Enter sendet, Shift+Enter macht eine neue Zeile
@@ -367,6 +526,7 @@ function applyState(state) {
 }
 
 async function refreshTree() {
+  if (guestMode) return;
   try {
     applyState(await api("GET", "/api/projects"));
   } catch (error) {
@@ -691,6 +851,24 @@ const PAGES = [
     ],
   },
   {
+    key: "Voice", icon: "🎤", desc: "Antworten vorlesen lassen und per Sprache schreiben. Beides ist standardmäßig aus.",
+    rows: [
+      { label: "Read answers aloud", category: "voice", key: "output", type: "toggle", live: true,
+        note: "J.A.R.V.I.S. liest seine Antworten und Timer-Meldungen vor. Eine neue Nachricht oder das Mikrofon unterbricht das Vorlesen." },
+      { label: "Voice engine", category: "voice", key: "engine", type: "select", options: ["OpenAI", "Browser"], live: true,
+        note: "OpenAI: natürlichere Stimme, spricht Deutsch und Englisch je nach Text. Der Antworttext geht dafür an OpenAI und kostet ein paar Cent. Browser: kostenlos, klingt einfacher." },
+      { label: "Voice", category: "voice", key: "voice", type: "select",
+        options: ["Onyx (male)", "Echo (male)", "Ash (male)", "Nova (female)", "Shimmer (female)", "Coral (female)"], live: true,
+        note: "Gilt für die OpenAI-Engine." },
+      { label: "Speech speed", category: "voice", key: "speed", type: "select", options: ["Slow", "Normal", "Fast"], live: true },
+      { type: "voice-test", live: true },
+      { label: "Voice input", category: "voice", key: "input", type: "toggle", live: true,
+        note: "Zeigt neben „Senden“ einen Mikrofon-Knopf: gedrückt halten, sprechen, loslassen. Der Browser erkennt die Sprache; bei Chrome und Edge geschieht das über einen Online-Dienst des Browser-Herstellers." },
+      { label: "Input language", category: "voice", key: "input_language", type: "select", options: ["German", "English"], live: true,
+        note: "In dieser Sprache hört das Mikrofon zu." },
+    ],
+  },
+  {
     key: "Activity", icon: "📋", desc: "Was J.A.R.V.I.S. getan hat: Aktionen, Rückfragen und Absagen. Nur zum Ansehen.",
     rows: [
       { type: "action-list", live: true },
@@ -736,7 +914,11 @@ matchMedia("(prefers-color-scheme: light)").addEventListener("change", applyAppe
 function applySettingsState(data) {
   settings = data.settings;
   about = data.about;
+  guestMode = data.guest === true;
+  document.body.classList.toggle("guest", guestMode);
+  if (guestMode) setStatus("ready", "GAST");
   applyAppearance();
+  applyVoice();
 }
 
 async function loadSettings() {
@@ -853,6 +1035,20 @@ function formatActionTime(iso) {
   return date.toLocaleString("de-DE", {
     day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
+}
+
+// Probehoeren mit den aktuellen Einstellungen (auch wenn "Read answers aloud" aus ist)
+function buildVoiceTest() {
+  const box = el("div", "setting-row voice-test");
+  box.append(
+    el("span", "", "Try voice"),
+    smallButton("Deutsch", "secondary", () =>
+      voice.speak("Guten Tag, Sir. Alle Systeme laufen einwandfrei.", voiceSetting("speed"), voiceSetting("engine"))),
+    smallButton("English", "secondary", () =>
+      voice.speak("Good evening, sir. All systems are running smoothly.", voiceSetting("speed"), voiceSetting("engine"))),
+    smallButton("Stop", "secondary", () => voice.stopSpeaking())
+  );
+  return box;
 }
 
 function buildActionList() {
@@ -1124,6 +1320,11 @@ function renderSettings() {
       return;
     }
 
+    if (row.type === "voice-test") {
+      settingsRows.appendChild(buildVoiceTest());
+      return;
+    }
+
     if (row.type === "memory-list") {
       settingsRows.appendChild(buildMemoryList());
       return;
@@ -1177,8 +1378,11 @@ async function pollBackground() {
     const query = lastBackgroundId === null ? "" : "?after=" + lastBackgroundId;
     const data = await api("GET", "/api/background" + query);
     lastBackgroundId = data.last;
-    data.messages.forEach((item) => addMessage("background", item.text, "HINTERGRUND"));
-    if (!busy && !ended) setStatus("ready", "READY");
+    data.messages.forEach((item) => {
+      addMessage("background", item.text, "HINTERGRUND");
+      speakReply(item.text);
+    });
+    if (!busy && !ended) setStatus("ready", readyLabel());
   } catch (error) {
     if (!busy && !ended) setStatus("error", "OFFLINE");
   }
@@ -1186,10 +1390,85 @@ async function pollBackground() {
 
 setInterval(pollBackground, 1000);
 
+// ----------------------------------------------------------------------
+// Laufende Timer (Step 6b): kleine Leiste ueber dem Eingabefeld
+// ----------------------------------------------------------------------
+
+const timersBar = document.getElementById("timers");
+let shownTimerIds = "";
+
+function renderTimers(timers) {
+  timersBar.hidden = timers.length === 0;
+  const ids = timers.map((t) => t.id).join(",");
+
+  if (ids === shownTimerIds) {
+    // gleiche Timer: nur die Zeit aktualisieren, damit Klicks nicht verloren gehen
+    timers.forEach((t) => {
+      const time = timersBar.querySelector('[data-time="' + t.id + '"]');
+      if (time) time.textContent = window.JarvisStatus.formatRemaining(t.remaining);
+    });
+    return;
+  }
+
+  shownTimerIds = ids;
+  timersBar.replaceChildren(...timers.map((t) => {
+    const chip = el("span", "timer-chip");
+    const time = el("span", "timer-time", window.JarvisStatus.formatRemaining(t.remaining));
+    time.dataset.time = t.id;
+    const cancel = el("button", "timer-cancel", "✕");
+    cancel.type = "button";
+    cancel.title = "Timer „" + t.name + "“ abbrechen";
+    cancel.setAttribute("aria-label", cancel.title);
+    cancel.addEventListener("click", async () => {
+      cancel.disabled = true;
+      try { await api("POST", "/api/timer/cancel", { id: t.id }); } catch (error) { /* naechste Runde zeigt den Stand */ }
+      refreshTimers();
+    });
+    chip.append(el("span", "timer-name", t.name), time, cancel);
+    return chip;
+  }));
+}
+
+async function refreshTimers() {
+  if (guestMode) return;
+  try {
+    renderTimers((await api("GET", "/api/timers")).timers);
+  } catch (error) {
+    /* Server nicht erreichbar: pollBackground zeigt OFFLINE */
+  }
+}
+
+setInterval(refreshTimers, 1000);
+
 // ======================================================================
 // Start
 // ======================================================================
 
-// Erst die Einstellungen laden, damit die Begruessung die richtige Anrede hat
-loadSettings().finally(() => addMessage("jarvis", greeting()));
-refreshTree();
+// Erst die Einstellungen laden, damit die Begruessung die richtige Anrede hat.
+// Der Statusbericht nennt Tageszeit, Datum und laufende Timer (Step 6b).
+async function showStartupReport() {
+  if (guestMode) {
+    addMessage("jarvis", GUEST_WELCOME);
+    return;
+  }
+
+  let timers = [];
+  try {
+    timers = (await api("GET", "/api/timers")).timers;
+  } catch (error) {
+    /* ohne Timer-Angabe */
+  }
+
+  addMessage("jarvis", window.JarvisStatus.buildStartupReport({
+    address: (settings.jarvis && settings.jarvis.address) || "Sir",
+    now: new Date(),
+    timers,
+    memoryEnabled: settings.memory ? settings.memory.enabled : true,
+  }));
+}
+
+const GUEST_WELCOME =
+  "Willkommen im Gastmodus. Ich kann mich unterhalten, die Uhrzeit und das Datum nennen, " +
+  "rechnen und im Web suchen. Auf diesem Rechner kann ich nichts tun.";
+
+loadSettings().finally(() => { showStartupReport(); refreshTree(); refreshTimers(); });

@@ -1,4 +1,5 @@
 import secrets
+import threading
 import time
 import traceback
 
@@ -11,11 +12,16 @@ from memory import Memory
 from settings_manager import SettingsManager
 from personality import get_address, set_address, DEFAULT_ADDRESS
 from task_registry import TaskRegistry
+import plan_view
+from capabilities import describe_capabilities
 import risk
 from task_executor import (
     execute_registered_task, execute_task, prepare_registered_task
 )
-from brain import respond_to_task, ask_jarvis
+from brain import respond_to_task, respond_to_plan, ask_jarvis
+from planner import create_plan
+from plan_executor import confirmable_steps, execute_plan, find_blocker
+from plan import step_risk, prepare_step
 from project_context import (
     get_project_context,
     add_to_project_section
@@ -23,6 +29,10 @@ from project_context import (
 from project_analyzer import process_project_context
 from router import route_message
 from background_tasks import get_results
+from timer import (
+    DEFAULT_NAME as DEFAULT_TIMER_NAME, format_duration, answer_pending as answer_timer_choice,
+    clear_choice as clear_timer_choice,
+)
 from workspace import Workspace
 from tasks import (
     register_all_tasks
@@ -55,11 +65,15 @@ def build_confirmation_question(section, content):
 
 
 PENDING_ACTION_SECONDS = 120
+PENDING_PLAN_SECONDS = 300
 
 
 class Jarvis:
     # Klassen-Standard: es gibt nie eine offene Rueckfrage, bevor eine entsteht
     pending_action = None
+    pending_plan = None
+    _plan_abort = None
+    _plan_running = False
 
     def __init__(self):
         self.client = OpenAI(timeout=OPENAI_TIMEOUT)
@@ -304,6 +318,145 @@ class Jarvis:
         """Verwirft jede offene Rueckfrage (Projekt-Info und Aktion)."""
         self.pending_project_confirmation = None
         self.pending_action = None
+        self.pending_plan = None
+        clear_timer_choice()
+
+    # ---------- Plaene (Step 5.3) ----------
+
+    def run_plan_request(self, message):
+        """Der Router sagt PLAN: Plan holen, pruefen, ANZEIGEN. Ausgefuehrt wird erst nach deinem Ja."""
+        plan, reason = create_plan(self.client, message, self.task_registry)
+
+        if plan is None:
+            return {
+                "status": "response",
+                "content": f"Das kann ich so nicht als Plan umsetzen, {get_address()}: {reason}"
+            }
+
+        approvable = set(confirmable_steps(plan, self.task_registry))
+        blocker = find_blocker(plan, self.task_registry, approvable)
+
+        if blocker is not None:
+            number, _, text = blocker
+
+            # Verbotene Schritte stehen im Protokoll wie verbotene Einzelaufgaben
+            for index, step in enumerate(plan.steps, start=1):
+                if step_risk(self.task_registry, step) == risk.FORBIDDEN:
+                    action_log.record(prepare_step(self.task_registry, step), "refused", "BLOCKED")
+
+            return {
+                "status": "response",
+                "content": (
+                    f"Diesen Plan fuehre ich nicht aus, {get_address()}. {text}"
+                )
+            }
+
+        plan_id = secrets.token_hex(8)
+        view = plan_view.view_plan(plan, self.task_registry, approvable)
+
+        self.pending_plan = {
+            "id": plan_id,
+            "plan": plan,
+            "approved": approvable,
+            "message": message,
+            "expires": time.monotonic() + PENDING_PLAN_SECONDS,
+        }
+
+        view["id"] = plan_id
+
+        return {
+            "status": "plan",
+            "content": plan_view.plan_text(view, get_address()),
+            "plan": view,
+        }
+
+    def abort_event(self):
+        if self._plan_abort is None:
+            self._plan_abort = threading.Event()
+
+        return self._plan_abort
+
+    def abort_plan(self):
+        """Stoppt einen laufenden Plan vor dem naechsten Schritt. True, wenn gerade einer laeuft."""
+        self.abort_event().set()
+
+        return self._plan_running
+
+    def _finish_pending_plan(self, pending, approve):
+        if not approve:
+            for number, step in enumerate(pending["plan"].steps, start=1):
+                if number in pending["approved"]:
+                    action_log.record(
+                        prepare_step(self.task_registry, step), "declined", "DECLINED"
+                    )
+
+            return f"Verstanden, {get_address()}. Ich habe nichts ausgefuehrt."
+
+        abort = self.abort_event()
+        abort.clear()
+        self._plan_running = True
+
+        try:
+            run = execute_plan(
+                pending["plan"], self.task_registry,
+                approved=pending["approved"], should_abort=abort.is_set,
+            )
+        finally:
+            self._plan_running = False
+
+        return respond_to_plan(self.client, pending["message"], run)
+
+    def handle_pending_plan(self, message):
+        """Chat-Antwort (ja/nein) auf einen angezeigten Plan, z.B. im CLI."""
+        pending = self.pending_plan
+
+        if pending is None:
+            return None
+
+        self.pending_plan = None
+
+        if time.monotonic() > pending["expires"]:
+            return None
+
+        answer = normalize_answer(message)
+
+        if answer in YES_ANSWERS:
+            return self._finish_pending_plan(pending, True)
+
+        if answer in NO_ANSWERS:
+            return self._finish_pending_plan(pending, False)
+
+        return None
+
+    def confirm_plan(self, plan_id, approve):
+        """Antwort per Knopf im Web. Nur der angezeigte Plan mit genau dieser Nummer zaehlt."""
+        pending = self.pending_plan
+        self.pending_plan = None
+
+        if (
+            pending is None
+            or not isinstance(plan_id, str)
+            or not secrets.compare_digest(pending["id"], plan_id)
+            or time.monotonic() > pending["expires"]
+        ):
+            return {
+                "status": "response",
+                "content": (
+                    f"Dieser Plan ist nicht mehr gueltig, {get_address()}. "
+                    "Bitte sage mir noch einmal, was ich tun soll."
+                )
+            }
+
+        try:
+            content = self._finish_pending_plan(pending, approve is True)
+        except Exception as error:
+            traceback.print_exc()
+            content = (
+                f"{get_address()}, bei der Ausfuehrung des Plans ist ein Fehler aufgetreten "
+                f"({type(error).__name__}: {str(error)[:200]})."
+            )
+
+        return {"status": "response", "content": content}
 
     # ---------- Aktionen mit Rueckfrage (Step 4.2) ----------
 
@@ -465,6 +618,11 @@ class Jarvis:
         return None
 
     def handle_command(self, command):
+        if command["intent"] == "SHOW_CAPABILITIES":
+            return describe_capabilities(
+                self.task_registry, get_address(), self.memory_enabled()
+            )
+
         if command["intent"] == "RESET_CONVERSATION":
             return self.reset_conversation()
 
@@ -530,6 +688,23 @@ class Jarvis:
 
     def _process_message(self, message):
 
+        # "Welchen Timer meinst du?" gilt nur fuer die direkt folgende Nachricht
+        timer_answer = answer_timer_choice(message)
+
+        if timer_answer is not None:
+            return {
+                "status": "response",
+                "content": timer_answer
+            }
+
+        plan_result = self.handle_pending_plan(message)
+
+        if plan_result is not None:
+            return {
+                "status": "response",
+                "content": plan_result
+            }
+
         action_result = self.handle_pending_action(message)
 
         if action_result is not None:
@@ -577,6 +752,9 @@ class Jarvis:
         if route["kind"] == "TASK":
             return self.run_task(message, route)
 
+        if route["kind"] == "PLAN":
+            return self.run_plan_request(message)
+
         return self.process_normal_message(message)
 
     def get_background_results(self):
@@ -585,14 +763,13 @@ class Jarvis:
     def process_background_result(self, result):
         if result["type"] == "TIMER_FINISHED":
             seconds = result["data"]["seconds"]
+            name = result["data"].get("name")
+            label = f" „{name}“" if name and name != DEFAULT_TIMER_NAME else ""
 
-            if seconds < 60:
-                return (
-                    f"{get_address()}, der Timer ist nach {seconds} Sekunden abgelaufen."
-                )
-
-            minutes = seconds // 60
-            return f"{get_address()}, der Timer ist nach {minutes} Minuten abgelaufen"
+            return (
+                f"{get_address()}, der Timer{label} ist nach "
+                f"{format_duration(seconds)} abgelaufen."
+            )
 
     def check_background_results(self):
         results = self.get_background_results()

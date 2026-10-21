@@ -274,7 +274,7 @@ action_executor.search_web = lambda query: types.SimpleNamespace(
 action_executor.set_volume = lambda p: effects["volume"].append(p)
 action_executor.launch_program = lambda p: effects["programs"].append(p)
 action_executor.open_file = lambda p: effects["files"].append(p)
-action_executor.start_timer = lambda s: effects["actions"].append("TIMER!")
+action_executor.start_timer = lambda s, name=None: effects["actions"].append("TIMER!")
 
 
 class SpyMemory(Memory):

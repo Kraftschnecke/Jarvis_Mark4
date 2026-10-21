@@ -6,7 +6,7 @@ Design und Begruendung: DESIGN_ROUTER.md
 route_message() gibt immer ein Dict mit fester Form zurueck:
 
     {
-        "kind": "COMMAND" | "TASK" | "CHAT",
+        "kind": "COMMAND" | "TASK" | "PLAN" | "CHAT",
         "command": {"intent", "project_name", "conversation_name",
                     "new_conversation_name"},
         "task_type": str | None,
@@ -26,10 +26,10 @@ from llm_json import parse_llm_json
 COMMAND_INTENTS = {
     "CREATE_PROJECT", "OPEN_PROJECT", "CLOSE_PROJECT",
     "CREATE_CONVERSATION", "OPEN_CONVERSATION", "RENAME_CONVERSATION",
-    "RESET_CONVERSATION", "EXIT"
+    "RESET_CONVERSATION", "SHOW_CAPABILITIES", "EXIT"
 }
 
-KINDS = {"COMMAND", "TASK", "CHAT"}
+KINDS = {"COMMAND", "TASK", "PLAN", "CHAT"}
 
 
 def chat_route():
@@ -91,6 +91,14 @@ def normalize_route(raw, task_registry):
 
             return route
 
+    # PLAN: mehrere Aufgaben nacheinander. Den Plan selbst erstellt erst der Planer
+    # (planner.py, ein weiterer Aufruf, nur fuer diese Nachrichten).
+    if kind == "PLAN":
+        route = chat_route()
+        route["kind"] = "PLAN"
+
+        return route
+
     return chat_route()
 
 
@@ -106,16 +114,23 @@ def describe_tasks(task_registry):
 
     for task in task_registry.get_all():
         names = []
+        hints = {}
 
         for action in task.actions:
             for name, definition in action.parameters.items():
                 if not _is_result_reference(definition) and name not in names:
                     names.append(name)
 
+                    # Nur die Beschreibung aus der Aufgabe ("z.B.: seconds, minutes ..."),
+                    # damit das Modell erlaubte Werte kennt statt zu raten
+                    if isinstance(definition, dict) and isinstance(definition.get("description"), str):
+                        hints[name] = definition["description"]
+
         line = f"- {task.task_type}: {task.goal}"
 
         if names:
-            line += f" (parameters: {', '.join(names)})"
+            shown = [f"{n} = {hints[n]}" if n in hints else n for n in names]
+            line += f" (parameters: {', '.join(shown)})"
 
         lines.append(line)
 
@@ -151,6 +166,10 @@ Kinds:
     selected project.
   - RESET_CONVERSATION
     The user wants to reset the current conversation.
+  - SHOW_CAPABILITIES
+    The user asks what J.A.R.V.I.S. can do: his abilities, functions,
+    features, or what he can help with.
+    Example: "was kannst du?", "what can you do?"
   - EXIT
     The user wants to exit or shut down J.A.R.V.I.S.
 
@@ -161,6 +180,12 @@ Kinds:
 
 {describe_tasks(task_registry)}
 
+- PLAN
+  The message asks for TWO OR MORE of the known tasks above to be done one
+  after the other, for example "start Notepad and tell me the time".
+  If one task is enough, choose TASK, not PLAN. Do not fill in task_type or
+  parameters for PLAN; another step will plan the details.
+
 - CHAT
   Everything else: a normal conversation, a question, a statement.
 
@@ -170,6 +195,7 @@ Important:
 - Minor spelling mistakes are possible.
 - Check COMMAND first. Only choose COMMAND if the user's intent is clear.
 - Then check TASK. Only choose TASK if the message really asks for that task.
+- Choose PLAN only if the message clearly asks for several known tasks in sequence.
 - If you are unsure, choose CHAT.
 - If a project is mentioned, extract the name as accurately as possible.
 - Do not invent or complete a project name or a conversation name that the
@@ -183,7 +209,7 @@ Return ONLY valid JSON in exactly this format. Use null where something does
 not apply:
 
 {{
-    "kind": "COMMAND or TASK or CHAT",
+    "kind": "COMMAND or TASK or PLAN or CHAT",
     "intent": "INTENT_NAME or null",
     "project_name": "project name or null",
     "conversation_name": "conversation name or null",
@@ -199,6 +225,9 @@ User message: "create conversation Test 123"
 
 User message: "wie spät ist es?"
 {{"kind": "TASK", "intent": null, "project_name": null, "conversation_name": null, "new_conversation_name": null, "task_type": "GET_TIME", "parameters": {{}}}}
+
+User message: "starte Notepad und sag mir die Uhrzeit"
+{{"kind": "PLAN", "intent": null, "project_name": null, "conversation_name": null, "new_conversation_name": null, "task_type": null, "parameters": {{}}}}
 
 User message: "Erkläre mir, wie ein Motor funktioniert"
 {{"kind": "CHAT", "intent": null, "project_name": null, "conversation_name": null, "new_conversation_name": null, "task_type": null, "parameters": {{}}}}

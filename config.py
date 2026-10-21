@@ -15,6 +15,9 @@ load_dotenv()
 # Sprachmodell fuer alle Anfragen. Ueberschreibbar mit JARVIS_MODEL in der .env
 MODEL = os.getenv("JARVIS_MODEL", "gpt-5.6-luna")
 
+# Sprachmodell fuer die Sprachausgabe (speech.py). Ueberschreibbar mit JARVIS_TTS_MODEL
+TTS_MODEL = os.getenv("JARVIS_TTS_MODEL", "gpt-4o-mini-tts")
+
 # Anzeige in "About" der Einstellungen
 VERSION = "Mark 4"
 

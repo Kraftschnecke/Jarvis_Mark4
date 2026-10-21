@@ -19,6 +19,15 @@ class SettingsManager:
         "memory": {
             "enabled": True,
         },
+        # Sprache (Step 6): beides standardmaessig aus, wird erst durch dich aktiv
+        "voice": {
+            "output": False,
+            "engine": "OpenAI",
+            "voice": "Onyx (male)",
+            "speed": "Normal",
+            "input": False,
+            "input_language": "German",
+        },
     }
 
     def __init__(self, file_path="settings.json"):
@@ -74,6 +83,26 @@ class SettingsManager:
     def _copy(value):
         return json.loads(json.dumps(value))
 
+    # Erlaubte Werte, wo nur bestimmte gelten (gleiche Liste wie in server.py)
+    CHOICES = {
+        ("voice", "speed"): ("Slow", "Normal", "Fast"),
+        ("voice", "engine"): ("OpenAI", "Browser"),
+        ("voice", "voice"): (
+            "Onyx (male)", "Echo (male)", "Ash (male)",
+            "Nova (female)", "Shimmer (female)", "Coral (female)",
+        ),
+        ("voice", "input_language"): ("German", "English"),
+    }
+
+    def _fits(self, category, key, value):
+        """Alte Dateien koennen gleiche Namen mit anderer Bedeutung haben
+        (Mark 3 hatte voice.speed als Zahl): so ein Wert wird verworfen."""
+        default = self.DEFAULT_SETTINGS[category][key]
+        if type(value) is not type(default):
+            return False
+        choices = self.CHOICES.get((category, key))
+        return choices is None or value in choices
+
     def _merge_defaults(self, settings):
         merged = self._copy(self.DEFAULT_SETTINGS)
         if not isinstance(settings, dict):
@@ -82,6 +111,6 @@ class SettingsManager:
             if category in merged and isinstance(values, dict):
                 # Nur Schluessel uebernehmen, die es noch gibt
                 for key, value in values.items():
-                    if key in merged[category]:
+                    if key in merged[category] and self._fits(category, key, value):
                         merged[category][key] = value
         return merged

@@ -1,4 +1,7 @@
-from timer import start_timer, convert_to_seconds
+from timer import (
+    start_timer, convert_to_seconds, list_timers, cancel_timer, clean_name,
+    format_duration, TimerError,
+)
 from tools.volume_tool import set_volume
 from tools.time_tool import get_current_time, get_current_date
 from tools.process_tool import get_running_programs
@@ -84,7 +87,25 @@ def execute_action(action):
         value = action.parameters["value"]
         unit = action.parameters["unit"]
         seconds = convert_to_seconds(value, unit)
-        start_timer(seconds)
-        return ToolResult(success=True, data={"seconds": seconds})
+        name = clean_name(action.parameters.get("name"))
+        try:
+            start_timer(seconds, name)
+        except TimerError as error:
+            return ToolResult(success=False, error=str(error))
+        return ToolResult(success=True, data={"seconds": seconds, "name": name})
+
+    if action.name == "list_timers":
+        timers = [
+            {"number": number, "name": t["name"], "remaining": format_duration(t["remaining"])}
+            for number, t in enumerate(list_timers(), start=1)
+        ]
+        return ToolResult(success=True, data={"timers": timers} if timers else {"timers": [], "info": "Es läuft kein Timer."})
+
+    if action.name == "cancel_timer":
+        try:
+            cancelled = cancel_timer(action.parameters.get("name"))
+        except TimerError as error:
+            return ToolResult(success=False, error=str(error))
+        return ToolResult(success=True, data={"cancelled": cancelled})
 
     raise ValueError(f"Unknown action: {action.name}")

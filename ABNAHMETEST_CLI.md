@@ -107,6 +107,14 @@ Den Text zum Prüfen zeigt `py show_project.py <ID aus C1>` (in einem zweiten Te
 | F6 | `Öffne die Datei C:\Windows\System32\calc.exe` | Rechner startet **nicht**. Jarvis sagt sofort "Das darf ich nicht tun" (ohne Rückfrage, Programmdateien sind verboten) | [ ] |
 | F7 | `Öffne die Datei C:\gibt\es\nicht.txt` | Freundliche Fehlermeldung, kein Absturz | [ ] |
 
+### F-Plan im CLI (Step 5.3)
+
+| # | Eingabe | Erwartet | OK |
+|---|---------|----------|----|
+| FP1 | `Starte Notepad und sag mir die Uhrzeit.` | Jarvis zeigt den Plan (2 Schritte, Schritt 1 "(braucht dein Ja)") und fragt `ja` oder `nein`. Notepad ist noch zu | [ ] |
+| FP2 | `ja` | Notepad öffnet sich, Jarvis fasst zusammen | [ ] |
+| FP3 | Nochmal FP1, dann `nein` | "Ich habe nichts ausgeführt" | [ ] |
+
 ## G. Web
 
 | # | Eingabe | Erwartet | OK |

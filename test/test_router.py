@@ -42,7 +42,7 @@ for name in (
 sys.modules["project"] = project_stub
 
 import router
-from router import route_message, normalize_route, chat_route, describe_tasks
+from router import route_message, normalize_route, chat_route, describe_tasks, build_prompt
 from task_registry import TaskRegistry
 from tasks import register_all_tasks
 import jarvis as jarvis_module
@@ -95,6 +95,14 @@ assert r["command"]["project_name"] is None and r["command"]["conversation_name"
 r = route('{"kind":"TASK","task_type":"SEARCH_WEB","parameters":{"query":"Wetter"}}')
 assert r["kind"] == "TASK" and r["task_type"] == "SEARCH_WEB"
 assert r["parameters"] == {"query": "Wetter"} and r["command"]["intent"] == "NORMAL_MESSAGE"
+
+# PLAN: nur die Art zaehlt, Einzelheiten (task_type, parameters) plant erst der Planer
+r = route('{"kind":"PLAN"}')
+assert r["kind"] == "PLAN" and r["task_type"] is None and r["parameters"] == {}
+r = route('{"kind":"PLAN","task_type":"OPEN_FILE","parameters":{"path":"C:/x.exe"},"intent":"EXIT"}')
+assert r["kind"] == "PLAN" and r["task_type"] is None and r["parameters"] == {}
+assert r["command"]["intent"] == "NORMAL_MESSAGE"
+assert "PLAN" in build_prompt("Starte Notepad und sag die Zeit", registry)
 
 r = route('{"kind":"TASK","task_type":"GET_TIME"}')
 assert r["kind"] == "TASK" and r["parameters"] == {}

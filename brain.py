@@ -73,10 +73,11 @@ def ask_jarvis(client, conversation, memory, project_context=None):
     return response.output_text
 
 
-def respond_to_task(client, user_message, task):
+def results_to_json(results):
+    """Tool-Ergebnisse als Text fuer den Prompt (ToolResult oder rohe Werte)."""
     task_results = []
 
-    for result in task.result:
+    for result in results or []:
         if hasattr(result, "success"):
             task_results.append({
                 "success": result.success,
@@ -86,10 +87,74 @@ def respond_to_task(client, user_message, task):
         else:
             task_results.append(result)
 
-    task_result_context = json.dumps(
-        task_results, ensure_ascii=False, indent=2, default=str
+    return json.dumps(task_results, ensure_ascii=False, indent=2, default=str)
+
+
+def respond_to_plan(client, user_message, run):
+    """Fasst einen ausgefuehrten (oder abgebrochenen) Plan fuer den Nutzer zusammen.
+
+    Wie bei respond_to_task: Ergebnisse und Fehlertexte kommen aus Tools (Internet)
+    und stehen als unvertraute Daten im Prompt. Die Antwort ist nur Text.
+    """
+    steps = []
+
+    for step_run in run.steps:
+        steps.append({
+            "step": step_run.number,
+            "task": step_run.step.task_type,
+            "status": step_run.status,
+            "results": json.loads(results_to_json(step_run.task.result)) if step_run.task else [],
+            "error": step_run.error,
+        })
+
+    steps_block = wrap_untrusted(
+        "plan-steps", json.dumps(steps, ensure_ascii=False, indent=2, default=str)
     )
-    
+    error_block = wrap_untrusted("plan-error", run.error if run.error else "None")
+
+    response = client.responses.create(
+        model=MODEL,
+        instructions=jarvis_personality() + UNTRUSTED_RULES,
+        input=f"""
+The user asked:
+
+{user_message}
+
+A plan with several steps was executed to fulfill the user's request.
+
+Plan goal:
+{run.plan.goal}
+
+Plan status (COMPLETED, FAILED, ABORTED or BLOCKED):
+{run.status}
+
+Steps with their status and results:
+{steps_block}
+
+Plan error:
+{error_block}
+
+Respond naturally and briefly to the user's original request based on what
+the steps did and returned. Mention only what is useful.
+
+When a step returned web search results, summarize the relevant information
+naturally. Do not dump raw data and do not invent anything the results do not
+support.
+
+If the plan did not complete (FAILED, ABORTED or BLOCKED), say clearly which
+steps were done and which were not, and why, in a natural way.
+
+Do not claim that anything was done that the step statuses do not show.
+Address the user as {get_address()} when appropriate.
+"""
+    )
+
+    return response.output_text
+
+
+def respond_to_task(client, user_message, task):
+    task_result_context = results_to_json(task.result)
+
     # Ergebnisse und Fehlertext stammen aus Tools (z.B. dem Internet): als
     # unvertraute Daten verpackt, nie als Anweisung (siehe untrusted.py)
     task_result_block = wrap_untrusted(f"task:{task.task_type}", task_result_context)

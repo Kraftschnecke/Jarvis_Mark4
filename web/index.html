@@ -46,8 +46,14 @@
 
       <section class="chat" id="chat" aria-live="polite"></section>
 
+      <div class="timers" id="timers" hidden aria-label="Laufende Timer"></div>
+
       <form class="composer" id="composer" autocomplete="off">
         <textarea id="input" rows="1" placeholder="Schreibe an J.A.R.V.I.S. ..." autofocus></textarea>
+        <button type="button" id="stop" class="secondary stop" hidden
+                title="Vorlesen und laufenden Plan stoppen">■ Stopp</button>
+        <button type="button" id="mic" class="mic" hidden
+                aria-label="Sprechen (gedrückt halten)" title="Gedrückt halten und sprechen">🎤</button>
         <button type="submit" id="send">Senden</button>
       </form>
     </main>
@@ -107,6 +113,8 @@
     </div>
   </dialog>
 
+  <script src="status.js"></script>
+  <script src="voice.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

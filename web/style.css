@@ -132,6 +132,8 @@ body {
   gap: 8px;
   margin-top: 10px;
 }
+.confirm-row { align-items: center; }
+.plan-running { color: var(--muted); font-size: 13px; }
 .confirm-row button.secondary {
   background: var(--button);
   color: inherit;
@@ -184,6 +186,11 @@ button {
   cursor: pointer;
 }
 button:hover { filter: brightness(1.1); }
+.mic { padding: 0 14px; font-size: 1.1rem; background: var(--base); border: 1px solid var(--line); touch-action: none; user-select: none; }
+.mic[hidden] { display: none; }
+.mic.listening { background: var(--accent); border-color: var(--accent); color: #fff; animation: mic-pulse 1s ease-in-out infinite; }
+@keyframes mic-pulse { 50% { opacity: 0.65; } }
+
 button:disabled, textarea:disabled { opacity: 0.45; cursor: not-allowed; }
 
 
@@ -445,3 +452,23 @@ button.danger-text { color: #d9695f; }
 .action-item.action-declined { border-left-color: var(--muted); }
 .action-detail { display: block; margin-top: 4px; overflow-wrap: anywhere; }
 .action-state { margin-top: 6px; font-size: 12px; color: var(--muted); }
+
+.setting-control[type="checkbox"] { flex: none; }
+.timers { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0 0; }
+.timers[hidden] { display: none; }
+.timer-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--base); border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 0.85rem; }
+.timer-name { color: var(--text); max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timer-time { color: var(--accent); font-variant-numeric: tabular-nums; }
+.timer-cancel { padding: 0 8px; background: transparent; color: var(--muted); border: 0; font-size: 0.9rem; line-height: 1.6; }
+.timer-cancel:hover { color: var(--text); filter: none; }
+.voice-test { display: flex; align-items: center; gap: 8px; }
+.voice-test > span { flex: 1; }
+.stop { padding: 0 14px; }
+.stop[hidden] { display: none; }
+
+/* Gastmodus (Server mit --guest): nur der Chat, keine Seitenleiste, keine Einstellungen */
+body.guest .sidebar,
+body.guest .menu-button,
+body.guest #open-settings,
+body.guest .timers,
+body.guest #mic { display: none !important; }

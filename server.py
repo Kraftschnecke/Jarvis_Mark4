@@ -11,8 +11,13 @@ Dinge:
                              ("messages" nur, wenn ein Chat-Befehl die offene Konversation geaendert hat)
        POST /api/confirm     {"id": "...", "approve": true|false}  (Antwort auf eine Rueckfrage, Step 4.2)
                              ("/api/message" liefert dann status "confirmation" und ein "confirmation"-Objekt)
+       POST /api/plan/confirm {"id": "...", "approve": true|false}  (Plan ausfuehren oder verwerfen, Step 5.3)
+       POST /api/plan/abort   {}  (stoppt einen laufenden Plan vor dem naechsten Schritt)
        GET  /api/background?after=<id>  ->  {"messages": [{"id": 3, "text": "..."}], "last": 3}
                              (ohne "after": nur den aktuellen Stand "last" melden)
+       GET  /api/timers      ->  {"timers": [{"id", "name", "seconds", "remaining"}]}  (laufende Timer, Step 6b)
+       POST /api/speak {"text": "..."}  ->  audio/mpeg  (Sprachausgabe mit der eingestellten Stimme, Step 6b)
+       POST /api/timer/cancel {"id": 3}  ->  {"cancelled": true|false}  (einen Timer abbrechen)
        GET  /api/projects    ->  {"projects": [...], "active": {...}}
        GET  /api/settings    ->  {"settings": {...}, "about": {...}}
        GET  /api/actions     ->  {"actions": [{"time", "goal", "details", "decision", "status", "summary"}]}  (Aktionsprotokoll, Step 4.3)
@@ -27,6 +32,8 @@ Anmeldung. Bevor Jarvis ueber das Internet erreichbar sein soll, braucht er
 Login, HTTPS und eine Nutzertrennung.
 
 Start:  py server.py
+Gastmodus (zum Ausprobieren durch andere, ohne Zugriff auf deinen Rechner):
+        py server.py --guest   (siehe guest.py; erlaubt nur /api/message, /api/background, /api/settings)
 """
 
 import json
@@ -40,9 +47,12 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import action_log
+import speech
+import timer
 from config import SERVER_HOST, SERVER_PORT, VERSION
 from memory import MAX_VALUE_LENGTH, VALID_TYPES
 from personality import get_address, is_valid_address
+from settings_manager import SettingsManager
 from workspace import WorkspaceError
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
@@ -76,11 +86,18 @@ EDITABLE_SETTINGS = {
     ("appearance", "accent_color"): lambda v: v in ACCENT_COLORS,
     ("jarvis", "address"): is_valid_address,
     ("memory", "enabled"): lambda v: isinstance(v, bool),
+    ("voice", "output"): lambda v: isinstance(v, bool),
+    ("voice", "speed"): lambda v: v in SettingsManager.CHOICES[("voice", "speed")],
+    ("voice", "engine"): lambda v: v in SettingsManager.CHOICES[("voice", "engine")],
+    ("voice", "voice"): lambda v: v in SettingsManager.CHOICES[("voice", "voice")],
+    ("voice", "input_language"): lambda v: v in SettingsManager.CHOICES[("voice", "input_language")],
+    ("voice", "input"): lambda v: isinstance(v, bool),
 }
 
 
 def settings_state(jarvis):
     return {
+        "guest": bool(getattr(jarvis, "guest", False)),
         "settings": jarvis.settings_manager.get_all(),
         "about": {
             "version": VERSION,
@@ -174,6 +191,10 @@ def api_post(jarvis, path, data):
         if response.get("status") == "confirmation":
             result["confirmation"] = response["confirmation"]
 
+        # Plan zur Freigabe (Step 5.3): Der Browser zeigt Ausfuehren/Abbrechen
+        if response.get("status") == "plan":
+            result["plan"] = response["plan"]
+
         # Chat-Befehle ("Oeffne Projekt X", "Reset", ...) koennen die offene
         # Konversation wechseln oder leeren. Dann bekommt der Browser den neuen
         # Verlauf mit, sonst zeigt das Chatfenster noch den alten.
@@ -188,6 +209,14 @@ def api_post(jarvis, path, data):
         # Antwort auf eine Rueckfrage (Step 4.2). Nur "approve": true fuehrt aus,
         # alles andere (fehlt, "true" als Text, 1, ...) zaehlt als Nein.
         response = jarvis.confirm_action(
+            get_text(data, "id"), data.get("approve") is True
+        )
+
+        return {"status": response["status"], "content": response["content"]}
+
+    if path == "/api/plan/confirm":
+        # Wie /api/confirm: nur "approve": true fuehrt den Plan aus
+        response = jarvis.confirm_plan(
             get_text(data, "id"), data.get("approve") is True
         )
 
@@ -343,12 +372,20 @@ class BackgroundFeed:
             ]
 
 
+GUEST_DENIED = {"error": "Im Gastmodus nicht verfügbar."}
+
+
 class JarvisServer(ThreadingHTTPServer):
     daemon_threads = True
+    # Die Standard-Warteschlange fasst nur 5 neue Verbindungen. Die Seite fragt
+    # jede Sekunde Hintergrund und Timer ab, ein Test schickt viele Anfragen
+    # kurz hintereinander: auf Windows kann sonst eine Verbindung ins Leere laufen.
+    request_queue_size = 128
 
-    def __init__(self, address, jarvis):
+    def __init__(self, address, jarvis, guest=False):
         super().__init__(address, JarvisHandler)
         self.jarvis = jarvis
+        self.guest = guest
         self.feed = BackgroundFeed()
         # Jarvis ist nicht fuer mehrere gleichzeitige Nachrichten gebaut.
         self.message_lock = threading.Lock()
@@ -362,6 +399,14 @@ class JarvisHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # keine Zeile pro Anfrage im Terminal
 
+    def handle_one_request(self):
+        """Bricht der Browser eine Anfrage ab (Seite neu geladen, Stopp beim Vorlesen,
+        naechster Satz vorgeladen), ist das kein Fehler: keine Meldung im Terminal."""
+        try:
+            super().handle_one_request()
+        except ConnectionError:
+            self.close_connection = True
+
     def send_json(self, status, data):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -370,6 +415,37 @@ class JarvisHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def guest_get(self, path):
+        """Gastmodus: nur Einstellungen (Standardwerte) und eine leere Hintergrund-Liste."""
+        if path == "/api/settings":
+            return self.send_json(200, settings_state(self.server.jarvis))
+
+        if path == "/api/background":
+            return self.send_json(200, {"messages": [], "last": 0})
+
+        return self.send_json(403, GUEST_DENIED)
+
+    def handle_speak(self, data):
+        jarvis = self.server.jarvis
+        text = data.get("text")
+
+        try:
+            audio = speech.synthesize(
+                getattr(jarvis, "client", None),
+                text,
+                jarvis.settings_manager.get("voice", "voice", speech.DEFAULT_VOICE),
+            )
+        except speech.SpeechError as error:
+            return self.send_json(400 if not isinstance(text, str) or not text.strip() else 502,
+                                  {"error": str(error)})
+
+        self.send_response(200)
+        self.send_header("Content-Type", "audio/mpeg")
+        self.send_header("Content-Length", str(len(audio)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(audio)
 
     def host_allowed(self):
         """Nur Anfragen an localhost zulassen (Schutz vor DNS-Rebinding)."""
@@ -392,6 +468,12 @@ class JarvisHandler(BaseHTTPRequestHandler):
             return self.send_json(403, {"error": "Host nicht erlaubt"})
 
         path = urlparse(self.path).path
+
+        if self.server.guest and path.startswith("/api/"):
+            return self.guest_get(path)
+
+        if path == "/api/timers":
+            return self.send_json(200, {"timers": timer.list_timers()})
 
         if path == "/api/background":
             feed = self.server.feed
@@ -480,16 +562,44 @@ class JarvisHandler(BaseHTTPRequestHandler):
         if not isinstance(data, dict):
             return self.send_json(400, {"error": "Ungueltige Anfrage"})
 
+        if self.server.guest and path != "/api/message":
+            return self.send_json(403, GUEST_DENIED)
+
         try:
             # Alles, was den Zustand von Jarvis aendert, laeuft nacheinander.
             # So wechselt niemand die Konversation, waehrend eine Antwort
             # noch in die alte gespeichert wird.
+            # Stopp fuer einen laufenden Plan: bewusst OHNE message_lock, denn der
+            # laufende Plan haelt ihn. Es wird nur ein Merker gesetzt.
+            if self.server.guest:
+                # Nur Nachrichten, und nur an den Gast-Jarvis (guest.py)
+                with self.server.message_lock:
+                    response = self.server.jarvis.process_message(get_text(data, "message"))
+                return self.send_json(200, {"status": "response", "content": response["content"]})
+
+            if path == "/api/plan/abort":
+                return self.send_json(200, {"aborted": bool(self.server.jarvis.abort_plan())})
+
+            # Sprachausgabe: Text rein, MP3 raus. Ohne message_lock, damit Jarvis
+            # beim Vorlesen nicht auf die naechste Nachricht warten muss.
+            if path == "/api/speak":
+                return self.handle_speak(data)
+
+            # Timer abbrechen: harmlos und soll auch gehen, waehrend Jarvis antwortet
+            if path == "/api/timer/cancel":
+                timer_id = data.get("id")
+                if isinstance(timer_id, bool) or not isinstance(timer_id, int):
+                    return self.send_json(400, {"error": "Ungültige Timer-Nummer."})
+                return self.send_json(200, {"cancelled": timer.cancel_timer_by_id(timer_id)})
+
             with self.server.message_lock:
                 result = api_post(self.server.jarvis, path, data)
         except ApiError as error:
             return self.send_json(error.status, {"error": str(error)})
         except WorkspaceError as error:
             return self.send_json(400, {"error": str(error)})
+        except ConnectionError:
+            raise            # Browser hat aufgelegt: kein Fehler von Jarvis (siehe handle_one_request)
         except Exception:
             traceback.print_exc()
             return self.send_json(500, {"error": "Interner Fehler. Details im Terminal."})
@@ -518,14 +628,31 @@ class JarvisHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def main():
-    from jarvis import Jarvis
+def main(argv=None):
+    import argparse
 
-    jarvis = Jarvis()
-    server = JarvisServer((SERVER_HOST, SERVER_PORT), jarvis)
+    parser = argparse.ArgumentParser(description="J.A.R.V.I.S. Weboberflaeche")
+    parser.add_argument("--guest", action="store_true",
+                        help="Gastmodus: nur plaudern, Uhrzeit, Datum, Rechnen, Websuche (siehe guest.py)")
+    parser.add_argument("--port", type=int, default=SERVER_PORT, help="Port (Standard aus config.py)")
+    args = parser.parse_args(argv)
+
+    if args.guest:
+        # Bewusst KEIN Jarvis-Objekt: keine Datenbank, kein Gedaechtnis, keine Projekte.
+        from openai import OpenAI
+        from config import OPENAI_TIMEOUT
+        from guest import GuestJarvis
+
+        jarvis = GuestJarvis(OpenAI(timeout=OPENAI_TIMEOUT))
+    else:
+        from jarvis import Jarvis
+
+        jarvis = Jarvis()
+
+    server = JarvisServer((SERVER_HOST, args.port), jarvis, guest=args.guest)
     url = f"http://localhost:{server.server_address[1]}"
 
-    print(f"J.A.R.V.I.S. laeuft auf {url}  (beenden mit Strg+C)")
+    print(f"J.A.R.V.I.S. {'(GASTMODUS) ' if args.guest else ''}laeuft auf {url}  (beenden mit Strg+C)")
     webbrowser.open(url)
 
     try:

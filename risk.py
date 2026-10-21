@@ -40,6 +40,8 @@ ACTION_RISK = {
     "find_program": SAFE,
     "search_web": SAFE,
     "start_timer": SAFE,
+    "list_timers": SAFE,
+    "cancel_timer": SAFE,        # bricht nur einen eigenen Timer ab
     # veraendert nur die Lautstaerke, sofort wieder korrigierbar
     "set_volume": SAFE,
     # greift auf deinen Rechner zu: erst fragen

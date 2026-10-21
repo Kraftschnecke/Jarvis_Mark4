@@ -107,13 +107,13 @@ assert plan.to_dict() == {
 
 # Zahlen, Verweis auf frueheren Schritt, parameters weggelassen oder null
 plan = parse_plan(make(
-    step("START_TIMER", value=10, unit="seconds"),
+    step("START_TIMER", value=10, unit="seconds", name="Nudeln"),
     step("SET_VOLUME", percentage=50.5),
     step("CALCULATE", expression="2+2"),
     {"task_type": "GET_DATE"},
     {"task_type": "GET_DATE", "parameters": None},
 ), registry)
-assert plan.steps[0].parameters == {"value": 10, "unit": "seconds"}
+assert plan.steps[0].parameters == {"value": 10, "unit": "seconds", "name": "Nudeln"}
 assert plan.steps[1].parameters == {"percentage": 50.5}
 
 plan = parse_plan(make(
@@ -242,6 +242,7 @@ prompt = client.calls[0]["input"]
 assert "START_PROGRAM" in prompt and "Starte Notepad und sag die Zeit" in prompt
 assert f"at most {MAX_STEPS} steps" in prompt and "from_step" in prompt
 assert "OPEN_PROGRAM" not in prompt                       # nur registrierte Aufgaben
+assert "seconds, minutes" in prompt                      # erlaubte Werte stehen im Prompt (Timer-Einheit)
 
 # Mit Code-Zaun und Zusatztext vor/nach dem JSON
 result, reason = planner.create_plan(FakeClient("Hier:\n```json\n" + good + "\n```\nViel Spass"), "x", registry)

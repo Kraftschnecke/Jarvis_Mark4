@@ -19,6 +19,7 @@ assert sm.get_all() == {
     "appearance": {"theme": "Dark", "accent_color": "J.A.R.V.I.S. Blue", "font_size": 13},
     "jarvis": {"address": "Sir"},
     "memory": {"enabled": True},
+    "voice": {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German"},
 }
 assert json.loads((folder / "neu.json").read_text(encoding="utf-8")) == sm.get_all()
 
@@ -38,9 +39,29 @@ assert sm.get_all() == {
     "appearance": {"theme": "Light", "accent_color": "Custom", "font_size": 17},
     "jarvis": {"address": "Chef"},
     "memory": {"enabled": False},
+    "voice": {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German"},
 }, sm.get_all()
 # ... und die Datei selbst ist bereinigt
 assert json.loads((folder / "alt.json").read_text(encoding="utf-8")) == sm.get_all()
+
+# 2b) Falsche Typen oder Werte in der Datei werden verworfen
+bad = {"voice": {"output": "ja", "speed": "Turbo", "input": 1}, "memory": {"enabled": "nein"}}
+(folder / "falsch.json").write_text(json.dumps(bad), encoding="utf-8")
+sm = SettingsManager(folder / "falsch.json")
+assert sm.get("voice", "output") is False and sm.get("voice", "speed") == "Normal"
+assert sm.get("voice", "input") is False and sm.get("memory", "enabled") is True
+(folder / "gut.json").write_text(json.dumps({"voice": {"output": True, "speed": "Fast", "input": True}}), encoding="utf-8")
+gut = SettingsManager(folder / "gut.json").get_category("voice")
+assert gut == {"output": True, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Fast",
+               "input": True, "input_language": "German"}, gut
+(folder / "gut2.json").write_text(json.dumps({"voice": {"engine": "Browser", "voice": "Nova (female)",
+                                                        "input_language": "English"}}), encoding="utf-8")
+gut = SettingsManager(folder / "gut2.json").get_category("voice")
+assert (gut["engine"], gut["voice"], gut["input_language"]) == ("Browser", "Nova (female)", "English")
+(folder / "schlecht.json").write_text(json.dumps({"voice": {"engine": "Google", "voice": "Darth (male)",
+                                                            "input_language": "Klingon"}}), encoding="utf-8")
+schlecht = SettingsManager(folder / "schlecht.json").get_category("voice")
+assert (schlecht["engine"], schlecht["voice"], schlecht["input_language"]) == ("OpenAI", "Onyx (male)", "German")
 
 # 3) Kaputte oder fremde Datei -> Standardwerte
 (folder / "kaputt.json").write_text("{nicht json", encoding="utf-8")

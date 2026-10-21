@@ -181,6 +181,38 @@ def create_start_timer_task():
                 "unit": {
                     "description": "Die Zeiteinheit, z.B.: seconds, minutes oder hours",
                     "type": "string"
+                },
+                "name": {
+                    "description": "Kurzer Name des Timers, z.B. Nudeln. Nennt der Nutzer keinen, nimm Timer",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_list_timers_task():
+    task = Task(
+        "LIST_TIMERS",
+        "Zeigen, welche Timer gerade laufen und wie lange noch"
+    )
+    task.add_action(Action("list_timers", {}))
+    return task
+
+
+def create_cancel_timer_task():
+    task = Task(
+        "CANCEL_TIMER",
+        "Einen laufenden Timer abbrechen"
+    )
+    task.add_action(
+        Action(
+            "cancel_timer",
+            {
+                "name": {
+                    "description": "Name des Timers, der abgebrochen werden soll. Sagt der Nutzer stattdessen die Nummer, kuerzester, laengster oder alle, schreibe genau das (z.B. 2, kuerzester). Nennt er nichts, nimm Timer",
+                    "type": "string"
                 }
             }
         )
@@ -199,4 +231,6 @@ def register_all_tasks(registry):
     registry.register(create_find_program_task())
     registry.register(create_start_program_task())
     registry.register(create_start_timer_task())
+    registry.register(create_list_timers_task())
+    registry.register(create_cancel_timer_task())
     registry.register(create_search_web_task())

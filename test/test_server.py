@@ -78,6 +78,22 @@ helper = FakeJarvis()
 fake.process_message = helper.process_message
 fake.check_background_results = helper.check_background_results
 fake.received = helper.received
+
+
+class FakeSpeechApi:
+    def __init__(self):
+        self.calls = []
+        self.error = None
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error:
+            raise self.error
+        return types.SimpleNamespace(content=b"ID3-fake-mp3")
+
+
+speech_api = FakeSpeechApi()
+fake.client = types.SimpleNamespace(audio=types.SimpleNamespace(speech=speech_api))
 httpd = server.JarvisServer(("127.0.0.1", 0), fake)
 port = httpd.server_address[1]
 threading.Thread(target=httpd.serve_forever, daemon=True).start()
@@ -105,6 +121,9 @@ def post(payload, headers=None, raw=None, host=None):
     h.update(headers or {})
     return request("POST", "/api/message", body, h, host)
 
+
+# Warteschlange fuer neue Verbindungen ist grosszuegig (sonst sporadische Timeouts unter Windows)
+assert server.JarvisServer.request_queue_size >= 64
 
 # 1) Statische Dateien
 status, ctype, data = request("GET", "/")
@@ -293,10 +312,21 @@ status, data = call("/api/settings")
 assert status == 200
 assert data["settings"]["appearance"]["theme"] == "Dark"
 assert data["settings"]["memory"]["enabled"] is True
-assert set(data["settings"]) == {"appearance", "jarvis", "memory"}, data["settings"]
+assert set(data["settings"]) == {"appearance", "jarvis", "memory", "voice"}, data["settings"]
+assert data["guest"] is False
+assert data["settings"]["voice"] == {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German"}
 assert set(data["settings"]["appearance"]) == {"theme", "accent_color", "font_size"}
 assert set(data["settings"]["jarvis"]) == {"address"}
 assert data["about"]["version"] == config.VERSION and "Python" in data["about"]["system"]
+
+# Sprache (Step 6): drei Einstellungen, alle aenderbar
+for key, value in (("output", True), ("speed", "Fast"), ("input", True)):
+    status, data = call("/api/settings", {"category": "voice", "key": key, "value": value})
+    assert status == 200 and data["settings"]["voice"][key] == value, key
+    assert json.loads(settings_file.read_text(encoding="utf-8"))["voice"][key] == value
+for key, value in (("output", False), ("speed", "Normal"), ("input", False)):
+    call("/api/settings", {"category": "voice", "key": key, "value": value})
+assert request("GET", "/voice.js")[0] == 200
 
 # Erlaubte Aenderungen wirken sofort und werden in settings.json gespeichert
 status, data = call("/api/settings", {"category": "appearance", "key": "theme", "value": "Light"})
@@ -346,7 +376,13 @@ for bad in (
     {"category": "appearance", "key": "accent_color", "value": "Custom"},
     {"category": "appearance", "key": "ui_scale", "value": "125 %"},        # entfernt
     {"category": "jarvis", "key": "personality", "value": "Casual"},        # entfernt (feste Persoenlichkeit)
-    {"category": "voice", "key": "speed", "value": 100},                    # entfernt bis Voice da ist
+    {"category": "voice", "key": "speed", "value": 100},                    # nur Slow/Normal/Fast
+    {"category": "voice", "key": "speed", "value": "Turbo"},
+    {"category": "voice", "key": "output", "value": "true"},
+    {"category": "voice", "key": "output", "value": 1},
+    {"category": "voice", "key": "input", "value": None},
+    {"category": "voice", "key": "pitch", "value": 1},
+    {"category": "voice", "key": "language", "value": "en-US"},
     {"category": "general", "key": "confirmations", "value": False},        # entfernt (Sicherheit)
 
     {"category": "appearance", "key": "theme", "value": "Neon"},
@@ -364,6 +400,102 @@ for bad in (
 ):
     assert call("/api/settings", bad)[0] == 400, bad
 assert fake.settings_manager.get_all() == before
+
+# Timer (Step 6b): auflisten und einzeln abbrechen
+import timer as timer_module
+for t in timer_module.list_timers():
+    timer_module.cancel_timer_by_id(t["id"])
+assert call("/api/timers") == (200, {"timers": []})
+nudeln = timer_module.start_timer(600, "Nudeln")
+ei = timer_module.start_timer(300, "Ei")
+status, data = call("/api/timers")
+assert status == 200 and [t["name"] for t in data["timers"]] == ["Ei", "Nudeln"]
+assert set(data["timers"][0]) == {"id", "name", "seconds", "remaining"}
+for bad in ({}, {"id": "1"}, {"id": True}, {"id": 1.5}, {"id": None}, {"id": [1]}, {"name": "Ei"}):
+    assert call("/api/timer/cancel", bad)[0] == 400, bad
+assert len(call("/api/timers")[1]["timers"]) == 2
+assert call("/api/timer/cancel", {"id": 99999}) == (200, {"cancelled": False})
+assert call("/api/timer/cancel", {"id": ei.id}) == (200, {"cancelled": True})
+assert [t["name"] for t in call("/api/timers")[1]["timers"]] == ["Nudeln"]
+assert call("/api/timer/cancel", {"id": ei.id}) == (200, {"cancelled": False})
+# Schutz wie bei allen Anfragen: fremder Ursprung und fremder Host
+assert post_to("/api/timer/cancel", {"id": nudeln.id}, {"Origin": "https://evil.example"})[0] == 403
+assert request("GET", "/api/timers", host="evil.example")[0] == 403
+assert len(call("/api/timers")[1]["timers"]) == 1
+# Abbrechen geht auch, waehrend Jarvis gerade eine Nachricht bearbeitet (kein message_lock)
+with httpd.message_lock:
+    assert call("/api/timer/cancel", {"id": nudeln.id}) == (200, {"cancelled": True})
+assert call("/api/timers") == (200, {"timers": []})
+assert request("GET", "/status.js")[0] == 200
+
+# Sprachausgabe (Step 6b): Text rein, MP3 raus, Stimme bestimmt der Server
+status, ctype, body = post_to("/api/speak", {"text": "Guten Tag, Sir."})
+assert status == 200 and ctype == "audio/mpeg" and body == b"ID3-fake-mp3", (status, ctype)
+assert speech_api.calls[-1]["voice"] == "onyx" and speech_api.calls[-1]["input"] == "Guten Tag, Sir."
+call("/api/settings", {"category": "voice", "key": "voice", "value": "Shimmer (female)"})
+assert post_to("/api/speak", {"text": "Hello"})[0] == 200
+assert speech_api.calls[-1]["voice"] == "shimmer"
+# Eine "voice" in der Anfrage wird ignoriert: der Browser waehlt die Stimme nicht
+post_to("/api/speak", {"text": "Hello", "voice": "echo", "model": "teuer", "instructions": "x"})
+assert speech_api.calls[-1]["voice"] == "shimmer" and speech_api.calls[-1]["model"] == config.TTS_MODEL
+call("/api/settings", {"category": "voice", "key": "voice", "value": "Onyx (male)"})
+n = len(speech_api.calls)
+for bad in ({}, {"text": ""}, {"text": "   "}, {"text": 5}, {"text": None}, {"text": ["a"]}):
+    status, _, body = post_to("/api/speak", bad)
+    assert status == 400 and json.loads(body)["error"], bad
+assert len(speech_api.calls) == n, "ungueltige Anfragen duerfen OpenAI nicht erreichen"
+# OpenAI faellt aus: 502 mit kurzer Meldung ohne Details
+speech_api.error = RuntimeError("Incorrect API key sk-geheim123")
+status, _, body = post_to("/api/speak", {"text": "Hallo"})
+assert status == 502 and b"sk-geheim123" not in body and b"RuntimeError" in body
+speech_api.error = None
+# Schutz wie bei allen Anfragen
+assert post_to("/api/speak", {"text": "Hallo"}, {"Origin": "https://evil.example"})[0] == 403
+assert request("POST", "/api/speak", b'{"text": "x"}', {"Content-Type": "text/plain"})[0] == 415
+# Vorlesen blockiert nicht, wenn Jarvis gerade eine Nachricht bearbeitet (kein message_lock)
+with httpd.message_lock:
+    assert post_to("/api/speak", {"text": "Hallo"})[0] == 200
+# Neue Einstellungen werden geprueft
+for key, bad in (("engine", "Google"), ("voice", "Darth (male)"), ("voice", "onyx"), ("input_language", "Klingon"),
+                 ("engine", True), ("voice", None)):
+    assert call("/api/settings", {"category": "voice", "key": key, "value": bad})[0] == 400, (key, bad)
+for key, good in (("engine", "Browser"), ("engine", "OpenAI"), ("voice", "Coral (female)"),
+                  ("voice", "Onyx (male)"), ("input_language", "English"), ("input_language", "German")):
+    assert call("/api/settings", {"category": "voice", "key": key, "value": good})[0] == 200, (key, good)
+
+# Der Browser legt waehrend der Antwort auf (Stopp beim Vorlesen, Seite neu geladen):
+# kein Fehler, keine Meldung im Terminal, der Server laeuft weiter
+import socket
+import traceback as traceback_module
+printed = []
+real_print_exc = traceback_module.print_exc
+traceback_module.print_exc = lambda *a, **k: printed.append(1)
+real_error = httpd.handle_error
+handled = []
+httpd.handle_error = lambda request, address: handled.append(address)
+real_create = speech_api.create
+
+
+def slow_create(**kwargs):
+    time.sleep(0.4)
+    return real_create(**kwargs)
+
+
+speech_api.create = slow_create
+body = json.dumps({"text": "Hallo"}).encode()
+for _ in range(3):
+    raw = socket.create_connection(("127.0.0.1", port), timeout=5)
+    raw.sendall(b"POST /api/speak HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n"
+                b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body)
+    time.sleep(0.1)
+    raw.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, b"\x01\x00\x00\x00\x00\x00\x00\x00")
+    raw.close()                      # harter Abbruch (RST), bevor die Antwort fertig ist
+time.sleep(1.0)
+speech_api.create = real_create
+traceback_module.print_exc = real_print_exc
+httpd.handle_error = real_error
+assert printed == [] and handled == [], (printed, handled)
+assert post_to("/api/speak", {"text": "Noch da?"})[0] == 200           # Server laeuft weiter
 
 # Schutz gilt auch hier
 assert post_to("/api/settings", {"category": "memory", "key": "enabled", "value": False},
