@@ -177,16 +177,16 @@ behavior, computer control, perception, hardware.
 ## Phase 7 -- Mark 4 Final Validation
 
 ### Step 7.1
-- [ ] Acceptance test through the web interface (new checklist `ABNAHMETEST_MARK4.md`, based on the Mark 3 checklists).
+- [X] Acceptance test through the web interface (new checklist `ABNAHMETEST_MARK4.md`, based on the Mark 3 checklists).
   - Done when: 0 deviations, run on a fresh clone of the repository.
 
 ### Step 7.2
-- [ ] Stability test (server running for a longer time, many messages, errors in between).
+- [X] Stability test (server running for a longer time, many messages, errors in between).
   - `py stabilitaetstest.py 300`: the real `server.py` under mixed load with deliberate errors (invalid input, aborted connections, wrong host/origin, an error inside the AI call). Measures answer time, threads, handles, memory.
-  - Done when: it prints `STABILITY TEST PASSED` (also row 9.1 of the acceptance test). Result (own run, 300 s, 16 workers): ~40,000 requests, 820 deliberate errors, no unexpected status, threads and handles back to start, memory +4.5 MB, 95% under 0.4 s. Owner run: ____
+  - Done when: it prints `STABILITY TEST PASSED` (also row 9.1 of the acceptance test). Result (own run, 300 s, 16 workers): ~40,000 requests, 820 deliberate errors, no unexpected status, threads and handles back to start, memory +4.5 MB, 95% under 0.4 s. Owner run: rund 39.800 Anfragen, Median 24 ms, Threads am Ende 2, +4,1 MB
 
 ### Step 7.3
-- [ ] Status document up to date, commit, tag `mark4`, push. Declare Mark 4 complete.
+- [X] Status document up to date, commit, tag `mark4`, push. Declare Mark 4 complete.
 
 ---
 
