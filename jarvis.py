@@ -670,7 +670,11 @@ class Jarvis:
         try:
             return self._process_message(message)
         except Exception as error:
-            traceback.print_exc()
+            if type(error).__name__ in ("APIConnectionError", "APITimeoutError"):
+                # Kein Internet / KI nicht erreichbar: erwartbar, eine Zeile statt Traceback
+                print(f"[FEHLER] Keine Verbindung zur KI: {type(error).__name__}")
+            else:
+                traceback.print_exc()
 
             # Eine halb verarbeitete Nachricht darf keine Rueckfrage offen lassen
             self.clear_pending()

@@ -12,7 +12,7 @@ dieser Test prüft Browser, echte Datenbank und echtes Modell zusammen.
 
 ## Vorbereitung
 
-- [ ] `py run_tests.py` zeigt `37 von 37 Test-Dateien bestanden.`
+- [ ] `py run_tests.py` zeigt `39 von 39 Test-Dateien bestanden.`
 - [ ] Alte Reste gelöscht: Ordner `gui/`, `theme_manager.py`, `settings.py`, `project_structure.py/.json`.
 - [ ] Start per Doppelklick auf `start_jarvis.bat` (oder `py server.py`). Der Browser öffnet `http://localhost:8000`.
 - [ ] Optional: Testprojekt `Abnahmetest` aus dem CLI-Test ist noch da (sonst legst du in B ein neues an).

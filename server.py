@@ -520,6 +520,8 @@ class JarvisHandler(BaseHTTPRequestHandler):
         if path == "/api/memories":
             try:
                 return self.send_json(200, memories_state(self.server.jarvis))
+            except ConnectionError:
+                raise            # Browser hat aufgelegt: kein Fehler von Jarvis
             except Exception:
                 traceback.print_exc()
                 return self.send_json(500, {"error": "Das Gedaechtnis konnte nicht geladen werden."})
@@ -527,6 +529,8 @@ class JarvisHandler(BaseHTTPRequestHandler):
         if path == "/api/actions":
             try:
                 return self.send_json(200, {"actions": action_log.recent(100)})
+            except ConnectionError:
+                raise            # Browser hat aufgelegt: kein Fehler von Jarvis
             except Exception:
                 traceback.print_exc()
                 return self.send_json(500, {"error": "Das Aktionsprotokoll konnte nicht geladen werden."})
@@ -534,6 +538,8 @@ class JarvisHandler(BaseHTTPRequestHandler):
         if path == "/api/projects":
             try:
                 return self.send_json(200, sidebar_state(self.server.jarvis))
+            except ConnectionError:
+                raise            # Browser hat aufgelegt: kein Fehler von Jarvis
             except Exception:
                 traceback.print_exc()
                 return self.send_json(500, {"error": "Projekte konnten nicht geladen werden."})
@@ -637,6 +643,8 @@ class JarvisHandler(BaseHTTPRequestHandler):
             return self.send_json(400, {"error": str(error)})
         except ConnectionError:
             raise            # Browser hat aufgelegt: kein Fehler von Jarvis (siehe handle_one_request)
+        except ConnectionError:
+            raise            # Browser hat aufgelegt: kein Fehler von Jarvis
         except Exception:
             traceback.print_exc()
             return self.send_json(500, {"error": "Interner Fehler. Details im Terminal."})
