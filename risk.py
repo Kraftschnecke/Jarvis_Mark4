@@ -63,6 +63,11 @@ def _open_file_is_forbidden(path):
     return extension in BLOCKED_EXTENSIONS
 
 
+def higher(a, b):
+    """Die riskantere von zwei Stufen."""
+    return a if _ORDER[a] >= _ORDER[b] else b
+
+
 def action_risk(action):
     level = ACTION_RISK.get(action.name, FORBIDDEN)
 
@@ -79,10 +84,7 @@ def task_risk(task):
     level = SAFE
 
     for action in task.actions or []:
-        action_level = action_risk(action)
-
-        if _ORDER[action_level] > _ORDER[level]:
-            level = action_level
+        level = higher(level, action_risk(action))
 
     return level
 
