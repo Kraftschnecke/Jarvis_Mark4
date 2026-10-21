@@ -242,6 +242,7 @@ async function sendMessage(text) {
   setStatus("busy", "THINKING...");
   // Eine neue Nachricht beantwortet keine alte Rueckfrage mehr
   document.querySelectorAll(".confirm-row").forEach((row) => row.remove());
+  awaitingAck = false;
   voice.stopSpeaking();
   addMessage("user", text);
 
@@ -282,11 +283,14 @@ async function sendMessage(text) {
     if (!ended) input.focus();
     // Befehle wie "Oeffne Projekt X" aendern den Stand der Seitenleiste
     refreshTree();
+    // Jarvis kann Termine eintragen: Kalender und Ziele nachladen
+    refreshWidgets();
   }
 }
 
 function setBusy(value) {
   busy = value;
+  refreshWake();
   sendButton.disabled = value || ended;
   // Waehrend Jarvis antwortet, darf niemand die Konversation wechseln.
   sidebar.classList.toggle("locked", value);
@@ -316,7 +320,12 @@ function updateStopButton() {
 }
 
 const voice = window.JarvisVoice.createVoice({
-  onSpeaking: (value) => { speakingNow = value; updateStopButton(); },
+  onSpeaking: (value) => {
+    speakingNow = value;
+    updateStopButton();
+    if (!value && awaitingAck) { awaitingAck = false; listenOnce(true); }
+    refreshWake();
+  },
   synth: window.speechSynthesis,
   Utterance: window.SpeechSynthesisUtterance,
   Recognition: window.SpeechRecognition || window.webkitSpeechRecognition,
@@ -341,10 +350,12 @@ const voice = window.JarvisVoice.createVoice({
   },
 });
 let fallbackShown = false;
+let awaitingAck = false;      // "Ja, Sir?" wird gesprochen, danach hoert Jarvis den Befehl
 const micButton = document.getElementById("mic");
 const stopButton = document.getElementById("stop");
 
 stopButton.addEventListener("click", async () => {
+  awaitingAck = false;
   voice.stopSpeaking();
   if (planRunning) {
     try { await api("POST", "/api/plan/abort", {}); } catch (error) { /* Plan endet ohnehin */ }
@@ -365,12 +376,24 @@ function applyVoice() {
   const show = voiceSetting("input") === true && voice.canListen();
   micButton.hidden = !show;
   if (!show && voice.isListening()) voice.stopListening();
+  refreshWake();
 }
 
-function micDown(event) {
-  if (event.repeat || busy || ended || voice.isListening()) return;
-  voice.startListening({
-    onState: (state) => micButton.classList.toggle("listening", state === "listening"),
+// Einen Satz hoeren und wie getippten Text senden. fromWake: nach dem Weckwort
+// (dann zeigt die Anzeige "Ich höre zu", auch wenn der Mikrofon-Knopf aus ist).
+function listenOnce(fromWake) {
+  if (busy || ended || voice.isListening()) return;
+  commandListening = fromWake === true;
+  const started = voice.startListening({
+    onState: (state) => {
+      micButton.classList.toggle("listening", state === "listening");
+      if (state !== "listening") {
+        commandListening = false;
+        // Kurz warten: kommt gleich Text, ist Jarvis gleich beschaeftigt und hoert nicht auf das Weckwort
+        setTimeout(refreshWake, 60);
+      }
+      updateWakeBadge();
+    },
     onText: (text) => {
       // Gesprochener Text wird wie getippter behandelt, mit denselben Pruefungen
       if (busy || ended) return;
@@ -378,6 +401,90 @@ function micDown(event) {
     },
     onError: (code) => addMessage("error", "Spracheingabe nicht möglich (" + code + ")."),
   }, voiceSetting("input_language"));
+  if (!started) { commandListening = false; refreshWake(); }
+  updateWakeBadge();
+}
+
+function micDown(event) {
+  if (event.repeat) return;
+  listenOnce(false);
+}
+
+// ---- Weckwort "Jarvis" (siehe wake.js): nur wenn eingeschaltet, nie im Gastmodus
+const wakeBadge = document.getElementById("wake");
+let commandListening = false;
+let wakeListening = false;
+
+const wake = window.JarvisWake.createWakeListener({
+  Recognition: window.SpeechRecognition || window.webkitSpeechRecognition,
+  onState: (state) => { wakeListening = state === "listening"; updateWakeBadge(); },
+  onWake: handleWake,
+  onError: (code) => {
+    addMessage("error", "Das Weckwort funktioniert gerade nicht (" + code + "). Du kannst es in den Einstellungen unter Voice aus- und wieder einschalten.");
+  },
+});
+
+function updateWakeBadge() {
+  if (commandListening) {
+    wakeBadge.hidden = false;
+    wakeBadge.dataset.mode = "command";
+    wakeBadge.textContent = "🎤 Ich höre zu …";
+  } else if (wakeListening) {
+    wakeBadge.hidden = false;
+    wakeBadge.dataset.mode = "wake";
+    wakeBadge.textContent = "👂 Sag „Jarvis“";
+  } else {
+    wakeBadge.hidden = true;
+  }
+}
+
+// Zuhoeren nur, wenn alles ruhig ist: nicht waehrend Jarvis spricht oder antwortet
+// (er soll sich nicht selbst hoeren) und nicht, waehrend das Mikrofon schon laeuft.
+function refreshWake() {
+  const wanted = voiceSetting("wake_word") === true && !guestMode && !ended && wake.canListen() &&
+    !busy && !speakingNow && !awaitingAck && !voice.isListening();
+  wake.setActive(wanted, wanted ? INPUT_LOCALES[voiceSetting("input_language")] : undefined);
+}
+const INPUT_LOCALES = window.JarvisVoice.INPUT_LANGUAGES;
+
+function chime() {
+  try {
+    const Context = window.AudioContext || window.webkitAudioContext;
+    const context = new Context();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.frequency.value = 880;
+    gain.gain.value = 0.08;
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.12);
+    oscillator.onended = () => context.close();
+  } catch (error) { /* ohne Ton funktioniert es trotzdem, die Anzeige genuegt */ }
+}
+
+// Jemand hat "Jarvis ..." gesagt. Mit Befehl dahinter (rest) geht der direkt los,
+// sonst antwortet Jarvis "Ja, Sir?" (gesprochen oder als Ton) und hoert dann einen Satz.
+function handleWake(rest) {
+  if (busy || ended) { refreshWake(); return; }
+  if (rest) {
+    wake.setActive(false);
+    sendMessage(rest);
+    return;
+  }
+  wake.setActive(false);
+  if (voiceSetting("output") === true) {
+    const english = voiceSetting("input_language") === "English";
+    const reply = english ? "Yes, Sir?" : "Ja, Sir?";
+    awaitingAck = true;
+    if (!voice.speak(reply, voiceSetting("speed"), voiceSetting("engine"))) {
+      awaitingAck = false;
+      listenOnce(true);
+    }
+  } else {
+    chime();
+    listenOnce(true);
+  }
 }
 
 function micUp() {
@@ -394,6 +501,414 @@ micButton.addEventListener("keydown", (event) => {
 micButton.addEventListener("keyup", (event) => {
   if (event.key === " " || event.key === "Enter") micUp();
 });
+
+
+// ======================================================================
+// Seitenleiste rechts (Etappe C): drei Widgets, jedes in den Einstellungen waehlbar
+// ======================================================================
+
+const widgetsEl = document.getElementById("widgets");
+const WIDGET_SLOTS = ["top", "middle", "bottom"];
+const widgetShown = { top: null, middle: null, bottom: null };   // was gerade gezeichnet ist
+let widgetClock = null;          // Sekundentakt fuer Uhr und Datum
+let hockeyTimer = null;          // Spielplan alle 5 Minuten neu holen
+let widgetData = null;           // Notizen und Ziele vom Server
+
+function wEl(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function widgetChoice(slot) {
+  if (guestMode) return "Off";
+  return (settings.widgets || {})[slot] || "Off";
+}
+
+function loadWidgetData(force) {
+  if (widgetData && !force) return Promise.resolve(widgetData);
+  return api("GET", "/api/widgets").then((data) => { widgetData = data; return data; });
+}
+
+// Felder, die sich neu zeichnen, wenn sich Daten von aussen aendern (z.B. Jarvis traegt einen Termin ein)
+const widgetRefreshers = [];
+
+function registerRefresher(section, redraw) {
+  widgetRefreshers.push({ section, redraw });
+}
+
+async function refreshWidgets() {
+  if (guestMode || !widgetRefreshers.length) return;
+  let data;
+  try { data = await loadWidgetData(true); } catch (error) { return; }
+  for (let i = widgetRefreshers.length - 1; i >= 0; i--) {
+    const entry = widgetRefreshers[i];
+    if (!entry.section.isConnected) widgetRefreshers.splice(i, 1);
+    else entry.redraw(data);
+  }
+}
+
+// ---- oben: Uhr, Datum, Kalender
+function updateTime() {
+  const now = new Date();
+  document.querySelectorAll(".w-clock-time").forEach((node) => { node.textContent = window.JarvisWidgets.formatClock(now); });
+  document.querySelectorAll(".w-clock-date, .w-date-long").forEach((node) => { node.textContent = window.JarvisWidgets.formatDateLong(now); });
+}
+
+function renderClock(section) {
+  section.append(wEl("div", "w-clock-time"), wEl("div", "w-clock-date w-muted"));
+  updateTime();
+}
+
+function renderDate(section) {
+  const now = new Date();
+  section.append(
+    wEl("div", "w-date-day", String(now.getDate())),
+    wEl("div", "w-date-long w-muted"),
+  );
+  updateTime();
+}
+
+function renderCalendar(section) {
+  const W = window.JarvisWidgets;
+  const today = new Date();
+  let year = today.getFullYear();
+  let month = today.getMonth();
+  let selected = W.dateKey(year, month, today.getDate());
+  let byDate = W.eventsByDate(widgetData && widgetData.events);
+
+  const head = wEl("div", "w-cal-head");
+  const prev = wEl("button", "w-cal-nav", "‹");
+  const next = wEl("button", "w-cal-nav", "›");
+  const title = wEl("span", "w-cal-title");
+  [prev, next].forEach((button) => { button.type = "button"; });
+  prev.setAttribute("aria-label", "Vorheriger Monat");
+  next.setAttribute("aria-label", "Nächster Monat");
+  head.append(prev, title, next);
+  const grid = wEl("div", "w-cal-grid");
+
+  const dayHead = wEl("div", "w-cal-dayhead");
+  const list = wEl("ul", "w-events");
+  const form = wEl("form", "w-event-form");
+  const field = wEl("input", "w-event-title");
+  const clock = wEl("input", "w-event-time");
+  const add = wEl("button", "w-goal-add", "＋");
+  const status = wEl("div", "w-status w-muted", "");
+  field.type = "text"; field.maxLength = 100; field.placeholder = "Termin …";
+  field.setAttribute("aria-label", "Neuer Termin");
+  clock.type = "time"; clock.setAttribute("aria-label", "Uhrzeit (optional)");
+  add.type = "submit"; add.setAttribute("aria-label", "Termin hinzufügen");
+  form.append(field, clock, add);
+  section.append(head, grid, dayHead, list, form, status);
+
+  function drawGrid() {
+    title.textContent = W.monthTitle(year, month);
+    grid.replaceChildren();
+    W.weekdayNames().forEach((name) => grid.append(wEl("span", "w-cal-dow", name)));
+    W.calendarWeeks(year, month).flat().forEach((day) => {
+      if (day === null) { grid.append(wEl("span", "w-cal-day empty")); return; }
+      const key = W.dateKey(year, month, day);
+      const cell = wEl("button", "w-cal-day", String(day));
+      cell.type = "button";
+      if (key === W.dateKey(today.getFullYear(), today.getMonth(), today.getDate())) cell.classList.add("today");
+      if (key === selected) cell.classList.add("selected");
+      if (byDate[key]) {
+        cell.classList.add("has-events");
+        cell.title = byDate[key].map((e) => (e.time ? e.time + " " : "") + e.title).join("\n");
+      }
+      cell.addEventListener("click", () => { selected = key; drawGrid(); drawDay(); });
+      grid.append(cell);
+    });
+  }
+
+  function drawDay() {
+    dayHead.textContent = W.formatDayLong(selected);
+    list.replaceChildren();
+    const events = byDate[selected] || [];
+    if (!events.length) list.append(wEl("li", "w-muted", "Keine Termine."));
+    events.forEach((event) => {
+      const item = wEl("li", "w-event");
+      const remove = wEl("button", "w-goal-remove", "×");
+      remove.type = "button";
+      remove.setAttribute("aria-label", "Termin löschen: " + event.title);
+      remove.addEventListener("click", async () => {
+        try {
+          widgetData = await api("POST", "/api/widgets/events/delete", { id: event.id });
+          status.textContent = "";
+          update(widgetData);
+        } catch (error) { status.textContent = error.message; }
+      });
+      item.append(wEl("span", "w-event-when", event.time || "ganztägig"), wEl("span", "w-event-text", event.title), remove);
+      list.append(item);
+    });
+  }
+
+  function update(data) {
+    byDate = W.eventsByDate(data.events);
+    drawGrid();
+    drawDay();
+  }
+
+  prev.addEventListener("click", () => { month -= 1; if (month < 0) { month = 11; year -= 1; } drawGrid(); });
+  next.addEventListener("click", () => { month += 1; if (month > 11) { month = 0; year += 1; } drawGrid(); });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const text = field.value.trim();
+    if (!text) return;
+    try {
+      widgetData = await api("POST", "/api/widgets/events", { title: text, date: selected, time: clock.value });
+      field.value = ""; clock.value = ""; status.textContent = "";
+      update(widgetData);
+    } catch (error) { status.textContent = error.message; }
+  });
+
+  update({ events: [] });
+  registerRefresher(section, update);
+  loadWidgetData(true).then(update).catch((error) => { status.textContent = error.message; });
+}
+
+// ---- Mitte: Notizen, Ziele des Tages
+function renderNotes(section) {
+  const area = wEl("textarea", "w-notes");
+  const status = wEl("div", "w-status w-muted", "");
+  area.rows = 7;
+  area.maxLength = 5000;
+  area.placeholder = "Notizen …";
+  area.setAttribute("aria-label", "Notizen");
+  section.append(wEl("h3", "w-title", "Notizen"), area, status);
+
+  let loaded = false;
+  let timer = null;
+  async function save() {
+    clearTimeout(timer);
+    timer = null;
+    try {
+      const data = await api("POST", "/api/widgets/notes", { text: area.value });
+      widgetData = data;
+      status.textContent = "Gespeichert";
+    } catch (error) {
+      status.textContent = "Nicht gespeichert: " + error.message;
+    }
+  }
+  area.addEventListener("input", () => {
+    if (!loaded) return;
+    status.textContent = "…";
+    clearTimeout(timer);
+    timer = setTimeout(save, 700);
+  });
+  area.addEventListener("blur", () => { if (timer) save(); });
+
+  area.disabled = true;
+  loadWidgetData().then((data) => { area.value = data.notes; area.disabled = false; loaded = true; })
+    .catch((error) => { status.textContent = error.message; });
+}
+
+function renderGoals(section) {
+  const list = wEl("ul", "w-goals");
+  const form = wEl("form", "w-goal-form");
+  const field = wEl("input", "w-goal-input");
+  const dailyToggle = wEl("button", "w-daily-toggle", "↻");
+  const add = wEl("button", "w-goal-add", "＋");
+  const status = wEl("div", "w-status w-muted", "");
+  field.type = "text";
+  field.maxLength = 200;
+  field.placeholder = "Neues Ziel …";
+  field.setAttribute("aria-label", "Neues Ziel");
+  dailyToggle.type = "button";
+  dailyToggle.title = "Tägliches Ziel: kommt jeden Tag wieder, als noch nicht erledigt";
+  dailyToggle.setAttribute("aria-label", "Tägliches Ziel");
+  dailyToggle.setAttribute("aria-pressed", "false");
+  add.type = "submit";
+  add.setAttribute("aria-label", "Ziel hinzufügen");
+  form.append(field, dailyToggle, add);
+  section.append(wEl("h3", "w-title", "Ziele heute"), list, form,
+    wEl("div", "w-status w-muted", "↻ = täglich wiederkehrend"), status);
+
+  let goals = [];
+
+  function draw() {
+    list.replaceChildren();
+    if (!goals.length) list.append(wEl("li", "w-muted", "Noch keine Ziele für heute."));
+    goals.forEach((goal, index) => {
+      const item = wEl("li", "w-goal" + (goal.done ? " done" : ""));
+      const box = wEl("input");
+      box.type = "checkbox";
+      box.checked = goal.done;
+      box.setAttribute("aria-label", goal.text);
+      box.addEventListener("change", () => { goals[index].done = box.checked; persist(); });
+      const repeat = wEl("button", "w-daily" + (goal.daily ? " on" : ""), "↻");
+      repeat.type = "button";
+      repeat.title = goal.daily ? "Täglich: klicken, um nur für heute zu behalten" : "Nur heute: klicken, damit es täglich wiederkommt";
+      repeat.setAttribute("aria-pressed", String(goal.daily));
+      repeat.setAttribute("aria-label", "Täglich wiederholen: " + goal.text);
+      repeat.addEventListener("click", () => { goals[index].daily = !goals[index].daily; persist(); });
+      const remove = wEl("button", "w-goal-remove", "×");
+      remove.type = "button";
+      remove.setAttribute("aria-label", "Ziel löschen");
+      remove.addEventListener("click", () => { goals.splice(index, 1); persist(); });
+      item.append(box, wEl("span", "w-goal-text", goal.text), repeat, remove);
+      list.append(item);
+    });
+  }
+
+  // Mehrere schnelle Aenderungen werden nacheinander gespeichert; erst die Antwort der letzten
+  // wird uebernommen (sonst wuerde eine alte Antwort ein gerade hinzugefuegtes Ziel wieder ausblenden).
+  let saving = Promise.resolve();
+  let queued = 0;
+
+  function persist() {
+    draw();
+    queued += 1;
+    saving = saving.then(async () => {
+      let data = null;
+      try {
+        data = await api("POST", "/api/widgets/goals", { items: goals });
+        widgetData = data;
+        status.textContent = "";
+      } catch (error) {
+        status.textContent = "Nicht gespeichert: " + error.message;
+      }
+      queued -= 1;
+      if (queued === 0 && data) { goals = data.goals; draw(); }
+    });
+  }
+
+  dailyToggle.addEventListener("click", () => {
+    const on = dailyToggle.getAttribute("aria-pressed") !== "true";
+    dailyToggle.setAttribute("aria-pressed", String(on));
+    dailyToggle.classList.toggle("on", on);
+  });
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const text = field.value.trim();
+    if (!text) return;
+    goals.push({ text, done: false, daily: dailyToggle.getAttribute("aria-pressed") === "true" });
+    field.value = "";
+    // Der naechste Eintrag ist wieder ein Ziel nur fuer heute
+    dailyToggle.setAttribute("aria-pressed", "false");
+    dailyToggle.classList.remove("on");
+    persist();
+  });
+
+  loadWidgetData(true).then((data) => { goals = data.goals; draw(); })
+    .catch((error) => { status.textContent = error.message; });
+  // Neuer Tag oder Aenderung von aussen: Liste neu laden (Eingabefeld bleibt unberuehrt)
+  registerRefresher(section, (data) => { goals = data.goals; draw(); });
+}
+
+// ---- unten: Eishockey (Spielplan holt der Server von der NHL)
+function gameRow(game) {
+  const info = window.JarvisWidgets.describeGame(game);
+  const row = wEl("li", "w-game");
+  row.append(
+    wEl("span", "w-game-when", info.when),
+    wEl("span", "w-game-vs", (info.home ? "vs " : "@ ") + info.opponent),
+  );
+  return row;
+}
+
+function renderHockey(section, teamName) {
+  const body = wEl("div", "w-hockey");
+  section.append(wEl("h3", "w-title", "🏒 " + teamName), body);
+  body.append(wEl("div", "w-muted", "Lade Spielplan …"));
+
+  async function load() {
+    let data;
+    try {
+      data = await api("GET", "/api/hockey");
+    } catch (error) {
+      if (body.isConnected) { body.replaceChildren(wEl("div", "w-muted", error.message)); }
+      return;
+    }
+    if (!body.isConnected) return;
+    body.replaceChildren();
+    if (!data.current && !(data.next || []).length) {
+      body.append(wEl("div", "w-muted", "Keine Spiele gefunden."));
+      return;
+    }
+    if (data.current) {
+      const info = window.JarvisWidgets.describeGame(data.current);
+      const card = wEl("div", "w-game-current" + (info.live ? " live" : ""));
+      const names = data.current.home.name + (info.score ? " " + info.score + " " : " – ") + data.current.away.name;
+      card.append(
+        wEl("div", "w-muted", info.live ? "Läuft gerade" : "Letztes Spiel"),
+        wEl("div", "w-game-score" + (info.outcome ? " " + info.outcome : ""), names),
+      );
+      if (!info.score) card.append(wEl("div", "w-muted", info.live ? info.when : "Ergebnis nicht verfügbar"));
+      body.append(card);
+    }
+    if ((data.next || []).length) {
+      body.append(wEl("div", "w-muted", "Nächste Spiele"));
+      const list = wEl("ul", "w-games");
+      data.next.forEach((game) => list.append(gameRow(game)));
+      body.append(list);
+    }
+    if (data.stale) body.append(wEl("div", "w-status w-muted", "Stand evtl. veraltet (kein Netz)."));
+  }
+
+  load();
+  clearInterval(hockeyTimer);
+  hockeyTimer = setInterval(load, 5 * 60 * 1000);
+}
+
+const WIDGET_RENDERERS = {
+  Clock: renderClock, Date: renderDate, Calendar: renderCalendar,
+  Notes: renderNotes, Goals: renderGoals,
+  "Edmonton Oilers": (section) => renderHockey(section, "Oilers"),
+  "Adler Mannheim": (section) => renderHockey(section, "Adler Mannheim"),
+};
+
+// Schmales Fenster: die Leiste ist ausgeblendet und laesst sich ueber den Knopf oben aufklappen
+const widgetsButton = document.getElementById("widgets-button");
+const narrowForWidgets = window.matchMedia("(max-width: 1180px)");
+
+function setWidgetsOpen(open) {
+  layout.classList.toggle("widgets-open", open);
+  widgetsButton.setAttribute("aria-expanded", String(open));
+}
+
+function updateWidgetsButton() {
+  const show = narrowForWidgets.matches && !widgetsEl.hidden && !guestMode;
+  widgetsButton.hidden = !show;
+  if (!show) setWidgetsOpen(false);
+}
+
+widgetsButton.addEventListener("click", () => setWidgetsOpen(!layout.classList.contains("widgets-open")));
+narrowForWidgets.addEventListener("change", updateWidgetsButton);
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") setWidgetsOpen(false); });
+document.addEventListener("pointerdown", (event) => {
+  if (!layout.classList.contains("widgets-open")) return;
+  if (widgetsEl.contains(event.target) || widgetsButton.contains(event.target)) return;
+  setWidgetsOpen(false);
+});
+
+// Termine und Ziele regelmaessig abgleichen (Jarvis traegt Termine ein, um Mitternacht beginnt ein neuer Tag)
+setInterval(refreshWidgets, 60 * 1000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshWidgets(); });
+
+function applyWidgets() {
+  let any = false;
+  WIDGET_SLOTS.forEach((slot) => {
+    const choice = widgetChoice(slot);
+    const section = document.getElementById("widget-" + slot);
+    section.hidden = choice === "Off";
+    if (choice !== "Off") any = true;
+    if (widgetShown[slot] === choice) return;        // unveraendert: nicht neu zeichnen
+    widgetShown[slot] = choice;
+    section.replaceChildren();
+    if (slot === "bottom") { clearInterval(hockeyTimer); hockeyTimer = null; }
+    if (choice !== "Off") WIDGET_RENDERERS[choice](section);
+  });
+  widgetsEl.hidden = !any;
+  document.body.classList.toggle("has-widgets", any);
+  updateWidgetsButton();
+
+  const needsClock = ["Clock", "Date"].some((name) => WIDGET_SLOTS.some((slot) => widgetShown[slot] === name));
+  if (needsClock && !widgetClock) widgetClock = setInterval(updateTime, 1000);
+  if (!needsClock && widgetClock) { clearInterval(widgetClock); widgetClock = null; }
+}
 
 // Enter sendet, Shift+Enter macht eine neue Zeile
 input.addEventListener("keydown", (event) => {
@@ -807,7 +1322,33 @@ function deleteConversation(project, conversation) {
 
 newProjectButton.addEventListener("click", newProject);
 newConversationButton.addEventListener("click", () => newConversation());
-menuButton.addEventListener("click", () => layout.classList.toggle("sidebar-open"));
+// Schmales Fenster: Leiste schiebt sich ueber den Chat. Breites Fenster: Leiste klappt ein und
+// aus, und der Zustand bleibt beim naechsten Oeffnen erhalten.
+const narrowForSidebar = window.matchMedia("(max-width: 720px)");
+
+// Schmal: ein Klick neben die Leiste (oder Esc) schiebt sie wieder weg, sie verdeckt ja den Knopf
+document.addEventListener("pointerdown", (event) => {
+  if (!layout.classList.contains("sidebar-open")) return;
+  if (sidebar.contains(event.target) || menuButton.contains(event.target)) return;
+  layout.classList.remove("sidebar-open");
+});
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") layout.classList.remove("sidebar-open"); });
+
+try {
+  if (localStorage.getItem("jarvis.sidebar") === "collapsed") layout.classList.add("sidebar-collapsed");
+} catch (error) { /* ohne Speicher bleibt die Leiste offen */ }
+
+menuButton.setAttribute("aria-expanded", String(!layout.classList.contains("sidebar-collapsed")));
+
+menuButton.addEventListener("click", () => {
+  if (narrowForSidebar.matches) {
+    layout.classList.toggle("sidebar-open");
+    return;
+  }
+  const collapsed = layout.classList.toggle("sidebar-collapsed");
+  menuButton.setAttribute("aria-expanded", String(!collapsed));
+  try { localStorage.setItem("jarvis.sidebar", collapsed ? "collapsed" : "open"); } catch (error) { /* egal */ }
+});
 
 // ======================================================================
 // Einstellungen
@@ -866,6 +1407,18 @@ const PAGES = [
         note: "Zeigt neben „Senden“ einen Mikrofon-Knopf: gedrückt halten, sprechen, loslassen. Der Browser erkennt die Sprache; bei Chrome und Edge geschieht das über einen Online-Dienst des Browser-Herstellers." },
       { label: "Input language", category: "voice", key: "input_language", type: "select", options: ["German", "English"], live: true,
         note: "In dieser Sprache hört das Mikrofon zu." },
+      { label: "Wake word “Jarvis”", category: "voice", key: "wake_word", type: "toggle", live: true,
+        note: "Sag „Jarvis“, gefolgt von deinem Befehl („Jarvis, stelle einen Timer auf 10 Sekunden“) oder warte auf „Ja, Sir?“. Dafür hört der Browser dauerhaft zu, solange diese Seite offen ist; bei Chrome und Edge geht das Gehörte an einen Online-Dienst des Browser-Herstellers. Ein Hinweis oben zeigt, wann er zuhört. Die Aufnahme wird nicht gespeichert." },
+    ],
+  },
+  {
+    key: "Widgets", icon: "🧩", desc: "Die Seitenleiste rechts: drei Felder, jedes einzeln wählbar. Bei „Off“ verschwindet das Feld. Die Leiste erscheint erst bei Fenstern ab etwa 1200 Pixel Breite.",
+    rows: [
+      { label: "Top widget", category: "widgets", key: "top", type: "select", options: ["Off", "Clock", "Date", "Calendar"], live: true },
+      { label: "Middle widget", category: "widgets", key: "middle", type: "select", options: ["Off", "Notes", "Goals"], live: true,
+        note: "Notizen, Ziele und Kalender-Termine liegen in der Datei widgets.json auf deinem Rechner. Ziele gelten nur für den heutigen Tag, außer du markierst sie mit ↻ als täglich." },
+      { label: "Bottom widget", category: "widgets", key: "bottom", type: "select", options: ["Off", "Edmonton Oilers", "Adler Mannheim"], live: true,
+        note: "Das laufende oder letzte Spiel und die nächsten (Oilers: vier, Mannheim: drei). Oilers: öffentliche NHL-Schnittstelle, mit Ergebnissen. Mannheim: offizielle Kalenderdatei der Adler, nur Paarungen und Termine, keine Ergebnisse. Nur der Server ruft sie auf, höchstens alle 5 Minuten." },
     ],
   },
   {
@@ -919,6 +1472,7 @@ function applySettingsState(data) {
   if (guestMode) setStatus("ready", "GAST");
   applyAppearance();
   applyVoice();
+  applyWidgets();
 }
 
 async function loadSettings() {

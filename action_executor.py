@@ -2,6 +2,7 @@ from timer import (
     start_timer, convert_to_seconds, list_timers, cancel_timer, clean_name,
     format_duration, TimerError,
 )
+import widgets
 from tools.volume_tool import set_volume
 from tools.time_tool import get_current_time, get_current_date
 from tools.process_tool import get_running_programs
@@ -47,6 +48,16 @@ def calculate_expression(node):
         return OPERATORS[type(node.op)](left, right)
 
     raise ValueError("Invalid mathematical expression")
+
+
+WEEKDAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+
+
+def describe_day(iso_date):
+    """'2026-10-23' -> 'Freitag, 23.10.2026' (so liest Jarvis das Datum auch vor)."""
+    from datetime import date
+    day = date.fromisoformat(iso_date)
+    return f"{WEEKDAYS[day.weekday()]}, {day.day:02d}.{day.month:02d}.{day.year}"
 
 
 def execute_action(action):
@@ -107,5 +118,33 @@ def execute_action(action):
         except TimerError as error:
             return ToolResult(success=False, error=str(error))
         return ToolResult(success=True, data={"cancelled": cancelled})
+
+    if action.name == "add_calendar_event":
+        store = widgets.default_store()
+        raw_time = action.parameters.get("time")
+        at = raw_time.strip() if isinstance(raw_time, str) else ""
+        if at.lower() in ("ganztaegig", "ganztägig", "all-day", "all day", "none", "null", "-"):
+            at = ""
+        try:
+            event = store.add_event(action.parameters.get("title"), action.parameters.get("date"), at)
+        except ValueError as error:
+            return ToolResult(success=False, error=str(error))
+        return ToolResult(success=True, data={
+            "title": event["title"], "date": describe_day(event["date"]),
+            "time": event["time"] or "ganztägig",
+        })
+
+    if action.name == "list_calendar_events":
+        store = widgets.default_store()
+        wanted = action.parameters.get("date")
+        if isinstance(wanted, str) and wanted.strip().lower() in ("naechste", "nächste", "upcoming", "next"):
+            events = store.upcoming_events(10)
+        elif isinstance(wanted, str) and widgets._valid_date(wanted.strip()):
+            events = store.events_on(wanted.strip())
+        else:
+            return ToolResult(success=False, error="Das Datum habe ich nicht verstanden.")
+        shown = [{"date": describe_day(e["date"]), "time": e["time"] or "ganztägig", "title": e["title"]}
+                 for e in events]
+        return ToolResult(success=True, data={"events": shown} if shown else {"events": [], "info": "Keine Termine."})
 
     raise ValueError(f"Unknown action: {action.name}")

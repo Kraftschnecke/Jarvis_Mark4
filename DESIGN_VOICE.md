@@ -99,3 +99,39 @@ Prüfung hätte sie die neue Einstellung kaputt gemacht (Test `test_settings.py`
 - Browser-Prüfung mit simulierter Sprache (Playwright) und Gegenproben (Code
   absichtlich kaputt, Test wurde rot).
 - Echte Stimme und echtes Mikrofon: nur du kannst das prüfen (Abnahme V1 bis V12).
+
+
+## Nachtrag: Weckwort „Jarvis“ (Step 6c)
+
+**Was:** Ein eigener Schalter (`voice.wake_word`, Standard aus) lässt den Browser
+dauernd zuhören. Reagiert wird nur, wenn eine Äußerung **mit „Jarvis“ beginnt**
+(optional „Hey/Hallo/Okay“ davor). „Ich finde Jarvis cool“ löst nichts aus.
+
+**Ablauf:**
+1. `Jarvis, stelle einen Timer auf 10 Sekunden`: der Befehl hinter dem Weckwort
+   geht direkt in `sendMessage`, also durch dieselben Prüfungen wie getippter Text.
+2. Nur `Jarvis`: Jarvis antwortet „Ja, Sir?“ (gesprochen, wenn Vorlesen an ist,
+   sonst ein kurzer Ton) und hört dann einen Satz zu (wie beim Mikrofon-Knopf).
+
+**Sicherheit:** Das Weckwort löst nie selbst etwas aus, es liefert nur Text.
+Aktionen mit Folgen brauchen wie immer dein Ja. Das Gehörte ohne Weckwort wird
+sofort verworfen und weder gespeichert noch an den Server geschickt. Im Gastmodus
+ist es abgeschaltet.
+
+**Wann er nicht zuhört:** während Jarvis antwortet oder spricht (er soll sich
+nicht selbst hören), während der Mikrofon-Knopf läuft, im Gastmodus.
+
+**Grenzen (ehrlich):**
+- Der Tab muss offen sein; im Hintergrund-Tab pausiert Chrome die Erkennung oft.
+- Chrome/Edge schicken das Gehörte an einen Online-Dienst (Google/Microsoft),
+  auch das Dauerzuhören. Wer das nicht will, lässt den Schalter aus.
+- Chrome beendet Dauer-Zuhören von selbst; `wake.js` startet automatisch neu und
+  gibt nach 6 Fehlstarts in Folge mit einer Meldung auf.
+- „Jarvis“ wird je nach Aussprache mal als „Jarwis“ oder „Dscharvis“ erkannt; die
+  üblichen Schreibweisen stehen in `WAKE_WORDS`. Echtes Offline-Weckwort
+  (z. B. Porcupine) wäre ein späterer Schritt.
+- Mit der OpenAI-Stimme dauert „Ja, Sir?“ etwa eine Sekunde (Netzabruf).
+
+**Geprüft:** `test/wake_check.js` (Erkennung, Neustarts, Pausieren, Fehler,
+Aufgeben), `test/test_wake.py` (Einbindung, Standard aus, Gate), Browser-Prüfung
+mit simulierter Sprache, Gegenproben. Echtes Mikrofon: Abnahme W1 bis W13.

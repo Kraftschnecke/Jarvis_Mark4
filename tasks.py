@@ -220,6 +220,52 @@ def create_cancel_timer_task():
     return task
 
 
+def create_add_calendar_event_task():
+    task = Task(
+        "ADD_CALENDAR_EVENT",
+        "Einen Termin in den Kalender eintragen"
+    )
+    task.add_action(
+        Action(
+            "add_calendar_event",
+            {
+                "title": {
+                    "description": "Kurzer Titel des Termins, z.B. Zahnarzt",
+                    "type": "string"
+                },
+                "date": {
+                    "description": "Das Datum als YYYY-MM-DD. Rechne Angaben wie morgen, uebermorgen oder Freitag anhand des heutigen Datums aus",
+                    "type": "string"
+                },
+                "time": {
+                    "description": "Die Uhrzeit als HH:MM (24 Stunden). Nennt der Nutzer keine, schreibe ganztaegig",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_list_calendar_events_task():
+    task = Task(
+        "LIST_CALENDAR_EVENTS",
+        "Kalender-Termine zeigen: was an einem Tag ansteht oder die naechsten Termine"
+    )
+    task.add_action(
+        Action(
+            "list_calendar_events",
+            {
+                "date": {
+                    "description": "Das Datum als YYYY-MM-DD (Angaben wie heute oder morgen anhand des heutigen Datums ausrechnen). Fragt der Nutzer allgemein nach den naechsten Terminen, schreibe naechste",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
 def register_all_tasks(registry):
     registry.register(create_get_time_task())
     registry.register(create_get_date_task())
@@ -233,4 +279,6 @@ def register_all_tasks(registry):
     registry.register(create_start_timer_task())
     registry.register(create_list_timers_task())
     registry.register(create_cancel_timer_task())
+    registry.register(create_add_calendar_event_task())
+    registry.register(create_list_calendar_events_task())
     registry.register(create_search_web_task())

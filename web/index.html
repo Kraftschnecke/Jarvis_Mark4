@@ -42,6 +42,9 @@
         <button class="menu-button" id="menu-button" type="button" aria-label="Seitenleiste">☰</button>
         <span class="logo">J.A.R.V.I.S.</span>
         <span class="status" id="status" data-state="ready">● READY</span>
+        <span class="wake" id="wake" hidden></span>
+        <button class="widgets-button" id="widgets-button" type="button" hidden
+                aria-label="Widgets ein- oder ausblenden" aria-expanded="false" title="Widgets">🧩</button>
       </header>
 
       <section class="chat" id="chat" aria-live="polite"></section>
@@ -57,6 +60,12 @@
         <button type="submit" id="send">Senden</button>
       </form>
     </main>
+
+    <aside class="widgets" id="widgets" aria-label="Widgets" hidden>
+      <section class="widget" id="widget-top" hidden></section>
+      <section class="widget" id="widget-middle" hidden></section>
+      <section class="widget" id="widget-bottom" hidden></section>
+    </aside>
   </div>
 
   <!-- Kontextmenue (wird von app.js befuellt) -->
@@ -115,6 +124,8 @@
 
   <script src="status.js"></script>
   <script src="voice.js"></script>
+  <script src="wake.js"></script>
+  <script src="widgets.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

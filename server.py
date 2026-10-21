@@ -49,6 +49,7 @@ from urllib.parse import parse_qs, urlparse
 import action_log
 import speech
 import timer
+import widgets
 from config import SERVER_HOST, SERVER_PORT, VERSION
 from memory import MAX_VALUE_LENGTH, VALID_TYPES
 from personality import get_address, is_valid_address
@@ -92,6 +93,10 @@ EDITABLE_SETTINGS = {
     ("voice", "voice"): lambda v: v in SettingsManager.CHOICES[("voice", "voice")],
     ("voice", "input_language"): lambda v: v in SettingsManager.CHOICES[("voice", "input_language")],
     ("voice", "input"): lambda v: isinstance(v, bool),
+    ("voice", "wake_word"): lambda v: isinstance(v, bool),
+    ("widgets", "top"): lambda v: v in SettingsManager.CHOICES[("widgets", "top")],
+    ("widgets", "middle"): lambda v: v in SettingsManager.CHOICES[("widgets", "middle")],
+    ("widgets", "bottom"): lambda v: v in SettingsManager.CHOICES[("widgets", "bottom")],
 }
 
 
@@ -382,10 +387,12 @@ class JarvisServer(ThreadingHTTPServer):
     # kurz hintereinander: auf Windows kann sonst eine Verbindung ins Leere laufen.
     request_queue_size = 128
 
-    def __init__(self, address, jarvis, guest=False):
+    def __init__(self, address, jarvis, guest=False, widget_store=None, hockey=None):
         super().__init__(address, JarvisHandler)
         self.jarvis = jarvis
         self.guest = guest
+        self.widget_store = widget_store or widgets.default_store()
+        self.hockey = hockey or widgets.HockeyFeed()
         self.feed = BackgroundFeed()
         # Jarvis ist nicht fuer mehrere gleichzeitige Nachrichten gebaut.
         self.message_lock = threading.Lock()
@@ -497,6 +504,19 @@ class JarvisHandler(BaseHTTPRequestHandler):
         if path == "/api/settings":
             return self.send_json(200, settings_state(self.server.jarvis))
 
+        # Seitenleiste: Notizen und Ziele (lokale Datei), Spielplan (Server holt ihn selbst)
+        if path == "/api/widgets":
+            return self.send_json(200, self.server.widget_store.get())
+
+        if path == "/api/hockey":
+            team = self.server.jarvis.settings_manager.get("widgets", "bottom")
+            if team not in widgets.TEAMS:
+                return self.send_json(200, {"team": None})
+            try:
+                return self.send_json(200, self.server.hockey.get(team))
+            except widgets.HockeyError as error:
+                return self.send_json(502, {"error": str(error)})
+
         if path == "/api/memories":
             try:
                 return self.send_json(200, memories_state(self.server.jarvis))
@@ -584,6 +604,23 @@ class JarvisHandler(BaseHTTPRequestHandler):
             # beim Vorlesen nicht auf die naechste Nachricht warten muss.
             if path == "/api/speak":
                 return self.handle_speak(data)
+
+            # Notizen und Ziele speichern: kleine lokale Datei, braucht den message_lock nicht
+            if path in ("/api/widgets/notes", "/api/widgets/goals", "/api/widgets/events",
+                        "/api/widgets/events/delete"):
+                store = self.server.widget_store
+                try:
+                    if path.endswith("notes"):
+                        store.set_notes(data.get("text"))
+                    elif path.endswith("goals"):
+                        store.set_goals(data.get("items"))
+                    elif path.endswith("delete"):
+                        store.delete_event(data.get("id"))
+                    else:
+                        store.add_event(data.get("title"), data.get("date"), data.get("time", ""))
+                except ValueError as error:
+                    return self.send_json(400, {"error": str(error)})
+                return self.send_json(200, self.server.widget_store.get())
 
             # Timer abbrechen: harmlos und soll auch gehen, waehrend Jarvis antwortet
             if path == "/api/timer/cancel":

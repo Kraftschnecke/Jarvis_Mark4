@@ -27,6 +27,13 @@ class SettingsManager:
             "speed": "Normal",
             "input": False,
             "input_language": "German",
+            "wake_word": False,
+        },
+        # Seitenleiste rechts (Etappe C): jedes der drei Felder einzeln waehlbar, "Off" blendet es aus
+        "widgets": {
+            "top": "Clock",
+            "middle": "Notes",
+            "bottom": "Off",
         },
     }
 
@@ -92,6 +99,9 @@ class SettingsManager:
             "Nova (female)", "Shimmer (female)", "Coral (female)",
         ),
         ("voice", "input_language"): ("German", "English"),
+        ("widgets", "top"): ("Off", "Clock", "Date", "Calendar"),
+        ("widgets", "middle"): ("Off", "Notes", "Goals"),
+        ("widgets", "bottom"): ("Off", "Edmonton Oilers", "Adler Mannheim"),
     }
 
     def _fits(self, category, key, value):

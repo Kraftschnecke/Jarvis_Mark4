@@ -82,7 +82,8 @@ def describe_capabilities(task_registry, address, memory_enabled=True):
         "**Sprache**",
         "In der Weboberfläche kann ich meine Antworten auf Deutsch und Englisch "
         "vorlesen (mit einer Stimme zur Auswahl), und du kannst mit gedrückter "
-        "Mikrofon-Taste mit mir sprechen. Beides ist aus, bis du es in den "
+        "Mikrofon-Taste mit mir sprechen. Auf Wunsch höre ich auch auf das "
+        "Weckwort „Jarvis“. Das alles ist aus, bis du es in den "
         "Einstellungen unter Voice einschaltest.",
         "",
         "**Sicherheit**",

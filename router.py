@@ -18,6 +18,7 @@ bekannten Befehlen und registrierten Aufgaben passt, wird zu "CHAT".
 """
 
 import json
+from datetime import datetime
 
 from config import MODEL
 from llm_json import parse_llm_json
@@ -137,8 +138,16 @@ def describe_tasks(task_registry):
     return "\n".join(lines)
 
 
-def build_prompt(message, task_registry):
+def build_prompt(message, task_registry, today=None):
+    today = today or datetime.now()
+    # Wochentag selbst benennen: strftime("%A") richtet sich nach der Spracheinstellung des Rechners
+    weekday = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][today.weekday()]
+    today_text = f"{today.strftime('%Y-%m-%d')} ({weekday})"
+
     return f"""
+Today's date is {today_text}. Use it to turn words like "tomorrow" or "Friday"
+into a date when a task needs one.
+
 Decide what kind of message the user sent. Choose exactly one kind.
 
 Kinds:

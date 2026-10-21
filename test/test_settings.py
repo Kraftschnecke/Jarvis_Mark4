@@ -19,7 +19,8 @@ assert sm.get_all() == {
     "appearance": {"theme": "Dark", "accent_color": "J.A.R.V.I.S. Blue", "font_size": 13},
     "jarvis": {"address": "Sir"},
     "memory": {"enabled": True},
-    "voice": {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German"},
+    "voice": {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German", "wake_word": False},
+    "widgets": {"top": "Clock", "middle": "Notes", "bottom": "Off"},
 }
 assert json.loads((folder / "neu.json").read_text(encoding="utf-8")) == sm.get_all()
 
@@ -39,7 +40,8 @@ assert sm.get_all() == {
     "appearance": {"theme": "Light", "accent_color": "Custom", "font_size": 17},
     "jarvis": {"address": "Chef"},
     "memory": {"enabled": False},
-    "voice": {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German"},
+    "voice": {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German", "wake_word": False},
+    "widgets": {"top": "Clock", "middle": "Notes", "bottom": "Off"},
 }, sm.get_all()
 # ... und die Datei selbst ist bereinigt
 assert json.loads((folder / "alt.json").read_text(encoding="utf-8")) == sm.get_all()
@@ -53,7 +55,7 @@ assert sm.get("voice", "input") is False and sm.get("memory", "enabled") is True
 (folder / "gut.json").write_text(json.dumps({"voice": {"output": True, "speed": "Fast", "input": True}}), encoding="utf-8")
 gut = SettingsManager(folder / "gut.json").get_category("voice")
 assert gut == {"output": True, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Fast",
-               "input": True, "input_language": "German"}, gut
+               "input": True, "input_language": "German", "wake_word": False}, gut
 (folder / "gut2.json").write_text(json.dumps({"voice": {"engine": "Browser", "voice": "Nova (female)",
                                                         "input_language": "English"}}), encoding="utf-8")
 gut = SettingsManager(folder / "gut2.json").get_category("voice")

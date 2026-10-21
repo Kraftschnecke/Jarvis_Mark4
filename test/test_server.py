@@ -312,9 +312,9 @@ status, data = call("/api/settings")
 assert status == 200
 assert data["settings"]["appearance"]["theme"] == "Dark"
 assert data["settings"]["memory"]["enabled"] is True
-assert set(data["settings"]) == {"appearance", "jarvis", "memory", "voice"}, data["settings"]
+assert set(data["settings"]) == {"appearance", "jarvis", "memory", "voice", "widgets"}, data["settings"]
 assert data["guest"] is False
-assert data["settings"]["voice"] == {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German"}
+assert data["settings"]["voice"] == {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German", "wake_word": False}
 assert set(data["settings"]["appearance"]) == {"theme", "accent_color", "font_size"}
 assert set(data["settings"]["jarvis"]) == {"address"}
 assert data["about"]["version"] == config.VERSION and "Python" in data["about"]["system"]
@@ -457,10 +457,11 @@ with httpd.message_lock:
     assert post_to("/api/speak", {"text": "Hallo"})[0] == 200
 # Neue Einstellungen werden geprueft
 for key, bad in (("engine", "Google"), ("voice", "Darth (male)"), ("voice", "onyx"), ("input_language", "Klingon"),
-                 ("engine", True), ("voice", None)):
+                 ("engine", True), ("voice", None), ("wake_word", "ja"), ("wake_word", 1), ("wake_word", None)):
     assert call("/api/settings", {"category": "voice", "key": key, "value": bad})[0] == 400, (key, bad)
 for key, good in (("engine", "Browser"), ("engine", "OpenAI"), ("voice", "Coral (female)"),
-                  ("voice", "Onyx (male)"), ("input_language", "English"), ("input_language", "German")):
+                  ("voice", "Onyx (male)"), ("input_language", "English"), ("input_language", "German"),
+                  ("wake_word", True), ("wake_word", False)):
     assert call("/api/settings", {"category": "voice", "key": key, "value": good})[0] == 200, (key, good)
 
 # Der Browser legt waehrend der Antwort auf (Stopp beim Vorlesen, Seite neu geladen):

@@ -41,6 +41,12 @@ copy programs.example.json programs.json
 
 Der Server hört nur auf dem eigenen Rechner (`127.0.0.1`), er hat noch keinen Login.
 
+- Gastmodus (nur plaudern, keine Aktionen, kein Gedächtnis): `py server.py --guest --port 8001`, siehe `DESIGN_GUEST.md`.
+- Sprache und Weckwort brauchen Chrome oder Edge. Das Vorlesen mit der OpenAI-Stimme kostet ein paar Cent
+  (Einstellungen → Voice; alles ist standardmäßig aus), siehe `DESIGN_VOICE.md`.
+- Die Seitenleiste rechts (Uhr, Kalender, Notizen, Ziele, Eishockey) wählst du unter Einstellungen → Widgets,
+  siehe `DESIGN_WIDGETS.md`. Notizen, Ziele und Termine liegen in `widgets.json` (nicht in Git).
+
 ## Tests
 
 ```
@@ -48,6 +54,11 @@ py run_tests.py        # kurze Übersicht
 py run_tests.py -v     # mit Ausgabe jedes Tests
 ```
 
-Die Tests brauchen weder Internet noch Datenbank noch API-Key.
+Die Tests brauchen weder Internet noch Datenbank noch API-Key. Die JavaScript-Tests brauchen Node.js (ohne Node
+gibt es nur einen Hinweis). Stabilitätstest (simulierte Dauerlast mit Fehlern, kostet nichts):
 
-Manuelle Abnahme: `ABNAHMETEST_CLI.md` und `ABNAHMETEST_WEB.md`.
+```
+py stabilitaetstest.py 300
+```
+
+Manuelle Abnahme: `ABNAHMETEST_MARK4.md` (Gesamtprüfung), Einzelheiten in `ABNAHMETEST_WEB.md` und `ABNAHMETEST_CLI.md`.

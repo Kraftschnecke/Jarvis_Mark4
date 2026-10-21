@@ -15,7 +15,7 @@ WEB = PROJECT_DIR / "web"
 
 # 1) Sprache ist standardmaessig aus (nichts hoert oder spricht ohne dein Zutun)
 voice = SettingsManager.DEFAULT_SETTINGS["voice"]
-assert voice == {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German"}
+assert voice == {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German", "wake_word": False}
 
 # 2) Einbindung in die Seite
 html = (WEB / "index.html").read_text(encoding="utf-8")
@@ -33,7 +33,8 @@ assert re.search(r'function speakReply\(text\) \{\s*if \(voiceSetting\("output"\
 # Neue Nachricht beendet das Vorlesen
 assert re.search(r"async function sendMessage\(text\) \{[^}]*?voice\.stopSpeaking\(\)", app, re.S)
 # Gesprochener Text geht denselben Weg wie getippter
-assert "sendMessage(text);" in app.split("function micDown")[1].split("function micUp")[0]
+assert "sendMessage(text);" in app.split("function listenOnce")[1].split("function micDown")[0]
+assert "listenOnce(false)" in app.split("function micDown")[1].split("\n}\n")[0]
 # Seite "Voice" in den Einstellungen mit den drei Schaltern
 for key in ('key: "output"', 'key: "speed"', 'key: "input"'):
     assert key in app, key
@@ -43,7 +44,7 @@ fetch_code = app.split("fetchAudio: async")[1].split("onFallback")[0]
 assert '"/api/speak"' in fetch_code and "body: JSON.stringify({ text })" in fetch_code
 assert "voice" not in fetch_code.lower().replace("fetchaudio", "")
 assert 'voice.speak(text, voiceSetting("speed"), voiceSetting("engine"))' in app
-assert "voiceSetting(\"input_language\")" in app.split("function micDown")[1].split("function micUp")[0]
+assert "voiceSetting(\"input_language\")" in app.split("function listenOnce")[1].split("function micDown")[0]
 for key in ('key: "engine"', 'key: "voice"', 'key: "input_language"'):
     assert key in app, key
 assert 'type: "voice-test"' in app and "buildVoiceTest()" in app

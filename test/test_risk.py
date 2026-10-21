@@ -100,6 +100,7 @@ expected = {
     "GET_SYSTEM_INFO": "safe", "GET_RUNNING_PROGRAMS": "safe",
     "FIND_PROGRAM": "safe", "SEARCH_WEB": "safe", "START_TIMER": "safe",
     "LIST_TIMERS": "safe", "CANCEL_TIMER": "safe",
+    "ADD_CALENDAR_EVENT": "safe", "LIST_CALENDAR_EVENTS": "safe",
     "SET_VOLUME": "safe",
     "OPEN_FILE": "confirm", "START_PROGRAM": "confirm",
 }

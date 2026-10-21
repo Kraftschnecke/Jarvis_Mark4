@@ -125,11 +125,12 @@ assert "Das Gedächtnis ist gerade ausgeschaltet." in describe_capabilities(regi
 
 # 7) Ehrlich: sagt klar, dass es sonst nichts kann; nennt nichts, was es nicht gibt
 assert "Alles andere kann ich nicht" in text
-for invented in ("E-Mail", "Kalender", "Smart", "Kamera"):
+assert "Termin" in text and "Kalender" in text      # seit Etappe C (ADD_CALENDAR_EVENT)
+for invented in ("E-Mail", "Google", "Smart", "Kamera"):
     assert invented not in text, invented
 
 # Sprache gibt es seit Step 6 und ist aus, bis man sie einschaltet
-assert "Voice" in text and "vorlesen" in text and "aus, bis du es" in text
+assert "Voice" in text and "vorlesen" in text and "aus, bis du es" in text and "Weckwort" in text
 
 # 8) Router kennt den Befehl
 assert "SHOW_CAPABILITIES" in router.build_prompt("was kannst du?", registry)

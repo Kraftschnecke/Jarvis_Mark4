@@ -42,6 +42,9 @@ ACTION_RISK = {
     "start_timer": SAFE,
     "list_timers": SAFE,
     "cancel_timer": SAFE,        # bricht nur einen eigenen Timer ab
+    # schreibt nur in widgets.json, auf der Seite per Klick wieder loeschbar
+    "add_calendar_event": SAFE,
+    "list_calendar_events": SAFE,
     # veraendert nur die Lautstaerke, sofort wieder korrigierbar
     "set_volume": SAFE,
     # greift auf deinen Rechner zu: erst fragen
